@@ -214,11 +214,26 @@ package and fails if a server module ever reaches a client bundle.
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "dotenv -e .env.test -- vitest run",
     "test:watch": "dotenv -e .env.test -- vitest"
   }
 }
+```
+
+**Why `next typegen` precedes `tsc`.** Next 16 generates global route types —
+`LayoutProps<"/">`, `PageProps<...>` — into `.next/dev/types/`, and the
+scaffold's `src/app/layout.tsx` uses them. Both `.next/` and `next-env.d.ts`
+are git-ignored, so a fresh clone has neither and `tsc` fails with
+`Cannot find name 'LayoutProps'`. It passes on a developer's machine only
+because `next dev` happened to run first — which makes this a bug that appears
+exclusively in CI, the worst kind. `next typegen` generates the types without a
+full build, in about a second.
+
+To confirm it is genuinely fixed, reproduce CI's conditions:
+
+```bash
+rm -rf .next next-env.d.ts tsconfig.tsbuildinfo && pnpm typecheck
 ```
 
 - [ ] **Step 7: Write the smoke test**
