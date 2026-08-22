@@ -14,6 +14,24 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
   ]),
   {
+    // A leading underscore marks something deliberately unused: the
+    // `_prev` state argument every server action must accept, and the
+    // destructure-to-omit pattern in tests. Without this the codebase
+    // accumulates warnings for values that are unused on purpose.
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          varsIgnorePattern: "^_",
+          argsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          destructuredArrayIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
+      ],
+    },
+  },
+  {
     // Scoped to shared components rather than to app/ pages: Server
     // Components legitimately import server modules, and flagging them
     // would train everyone to disable the rule. `import 'server-only'` is
