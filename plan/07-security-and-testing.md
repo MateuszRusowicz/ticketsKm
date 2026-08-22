@@ -121,8 +121,10 @@ abandoning a redirect halfway.
 
 **Load test before go-live.** k6 or Artillery simulating the on-sale rush —
 several hundred concurrent buyers against the 900-seat concert. What this is
-really checking is Prisma connection-pool behaviour against Neon, which is the
-most likely thing to fall over under a real burst.
+really checking is the `PrismaPg` adapter's connection-pool behaviour against
+Neon's pooled endpoint, which is the most likely thing to fall over under a
+real burst. Prisma 7 has no bundled query engine — pooling is entirely the
+adapter's, so tune `max` on it rather than looking for a Prisma setting.
 
 **Development approach.** Tests first for the money and inventory code. Not as
 ceremony: the oversell and idempotency behaviours are impossible to verify by

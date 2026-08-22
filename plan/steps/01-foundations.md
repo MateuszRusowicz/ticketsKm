@@ -21,6 +21,7 @@ Every task's requirements implicitly include this section.
 - **Nothing under `src/lib/server/` may be imported from a `"use client"` file.** Shared types and Zod schemas go in `src/lib/shared/`.
 - **Only `NEXT_PUBLIC_*` environment variables reach the browser.**
 - **Package manager is `pnpm`.** Never `npm install` or `yarn`.
+- **Prisma 7.** The client is generated as TypeScript into `src/generated/prisma` and imported from **`@/generated/prisma/client`** — *not* from `@prisma/client`. Prisma 7 also **requires a driver adapter**; `PrismaPg` is configured once in `src/lib/server/db.ts` and nowhere else.
 - **Admin UI is Polish only** and deliberately untranslated. Only the public shop is localised.
 - **Locales are exactly `pl`, `en`, `de`**, with `pl` as default.
 - **Currencies are exactly `PLN` and `EUR`.**
@@ -53,12 +54,14 @@ Files created by this plan, and what each is responsible for.
 **Configuration**
 - `package.json`, `tsconfig.json`, `next.config.ts` — project setup
 - `eslint.config.mjs` — lint rules, including the server/client import guard
-- `vitest.config.ts`, `vitest.setup.ts` — test runner, Node environment
+- `vitest.config.mts`, `vitest.setup.ts` — test runner, Node environment
 - `docker-compose.yml` — local Postgres with `km_dev` and `km_test` databases
 - `.env.example`, `.env`, `.env.test` — environment
 - `.github/workflows/ci.yml` — typecheck, lint, test on every push
 
 **Database**
+- `prisma.config.ts` — datasource URL for the CLI (Prisma 7 moved it out of the schema)
+- `src/generated/prisma/**` — the generated client. **Git-ignored build output**, recreated by the `postinstall` hook; never edited, never committed
 - `prisma/schema.prisma` — the full schema from [`02-data-model.md`](../02-data-model.md)
 - `prisma/seed.ts` — two venues, three concerts, two admin accounts
 - `src/lib/server/db.ts` — the Prisma client singleton
@@ -92,7 +95,7 @@ Files created by this plan, and what each is responsible for.
 ## Task 1: Project scaffold, tooling and CI
 
 **Files:**
-- Create: `package.json`, `tsconfig.json`, `next.config.ts`, `eslint.config.mjs`, `vitest.config.ts`, `.gitignore`, `.github/workflows/ci.yml`
+- Create: `package.json`, `tsconfig.json`, `next.config.ts`, `eslint.config.mjs`, `vitest.config.mts`, `.gitignore`, `.github/workflows/ci.yml`
 - Create: `src/app/layout.tsx`, `src/app/page.tsx`
 - Test: `tests/smoke.test.ts`
 
@@ -112,11 +115,23 @@ git init
 
 - [ ] **Step 2: Scaffold the application at the repository root**
 
+`create-next-app` derives the npm package name from the directory, and npm
+forbids capital letters — so running it in a directory called `KM` fails
+outright with *"name can no longer contain capital letters"*. Scaffold under a
+valid name and move the result in:
+
 ```bash
-pnpm create next-app@latest . --ts --app --src-dir --tailwind --eslint --import-alias "@/*"
+SCRATCH=$(mktemp -d)
+cd "$SCRATCH"
+pnpm create next-app@latest km --ts --app --src-dir --tailwind --eslint --import-alias "@/*" --yes
+cd km && rm -rf .git .next node_modules
+for f in $(ls -A); do mv "$f" /path/to/KM/; done
+cd /path/to/KM && pnpm install
 ```
 
-Answer "No" if asked to overwrite `plan/`. The `plan/` directory must survive.
+`node_modules` is deliberately not moved: pnpm symlinks into a
+content-addressed store and those links do not survive a cross-filesystem
+move. `--yes` keeps it non-interactive. The `plan/` directory is untouched.
 
 - [ ] **Step 3: Verify the scaffold runs**
 
@@ -133,11 +148,13 @@ pnpm add -D vitest @vitest/coverage-v8 tsx dotenv-cli
 
 - [ ] **Step 5: Create the Vitest configuration**
 
-`vitest.config.ts`:
+`vitest.config.mts` — note the **`.mts`** extension. The config uses
+`import.meta.url`, and in a plain `.ts` file Vite loads it as CommonJS and
+warns that this breaks under the native config loader.
 
 ```ts
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
-import path from 'node:path'
 
 export default defineConfig({
   test: {
@@ -153,12 +170,17 @@ export default defineConfig({
     // two such files, so it is settled here rather than after the first
     // flake. (`poolOptions.threads.singleThread` does NOT do this: it
     // controls threading inside a worker, not the number of workers.)
-    fileParallelism: false,
+    // Vitest 4 REMOVED `poolOptions` — these are top-level options now.
+    // `minWorkers` does not exist in Vitest 4 either; tsc rejects it.
     pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
+    fileParallelism: false,
+    maxWorkers: 1,
   },
   resolve: {
-    alias: { '@': path.resolve(__dirname, './src') },
+    alias: {
+      // fileURLToPath rather than __dirname: this config is an ES module.
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
   },
 })
 ```
@@ -170,7 +192,18 @@ export default defineConfig({
 export {}
 ```
 
-The `environment: 'node'` line matters: the `server-only` package throws when resolved in a browser environment, so tests importing server modules would fail under jsdom.
+**`server-only` must be stubbed for tests.** That package throws on import
+unless resolved under React's `react-server` condition, which Vitest does not
+use — so *every* server module fails to import, not merely under jsdom. Create
+`tests/stubs/server-only.ts` containing `export {}` and alias it in
+`resolve.alias`:
+
+```ts
+      'server-only': fileURLToPath(new URL('./tests/stubs/server-only.ts', import.meta.url)),
+```
+
+The guarantee still holds where it matters: the Next.js build resolves the real
+package and fails if a server module ever reaches a client bundle.
 
 - [ ] **Step 6: Add the scripts to `package.json`**
 
@@ -180,7 +213,7 @@ The `environment: 'node'` line matters: the `server-only` package throws when re
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "dotenv -e .env.test -- vitest run",
     "test:watch": "dotenv -e .env.test -- vitest"
@@ -245,6 +278,31 @@ Append to `eslint.config.mjs`, inside the exported config array:
 },
 ```
 
+- [ ] **Step 10a: Allow deliberately-unused variables**
+
+A leading underscore is the convention for something intentionally unused, and
+this codebase hits it constantly: every server action has the signature
+`(_prev, formData)`, and tests destructure a key out in order to omit it.
+Without this the project accumulates warnings for code that is correct. Add to
+`eslint.config.mjs`:
+
+```js
+{
+  rules: {
+    '@typescript-eslint/no-unused-vars': ['warn', {
+      varsIgnorePattern: '^_',
+      argsIgnorePattern: '^_',
+      caughtErrorsIgnorePattern: '^_',
+      destructuredArrayIgnorePattern: '^_',
+      ignoreRestSiblings: true,
+    }],
+  },
+},
+```
+
+Note that `eslint` exits 0 on warnings, so warnings never fail the gate. To
+make them fail, add `--max-warnings 0` to the lint script.
+
 - [ ] **Step 11: Verify lint and typecheck pass**
 
 Run: `pnpm lint && pnpm typecheck`
@@ -284,7 +342,10 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Match the local toolchain. A skew between CI and a developer's
+          # machine is exactly the "passes on my laptop" problem the suite
+          # exists to prevent.
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
@@ -404,11 +465,12 @@ import { z } from 'zod'
 // Deliberately free of side effects so it can be unit tested without a
 // real environment. env.ts is what actually reads process.env.
 export const envSchema = z.object({
-  DATABASE_URL: z.string().url(),
-  DIRECT_URL: z.string().url(),
+  // z.url() rather than z.string().url(): the latter is deprecated in Zod 4.
+  DATABASE_URL: z.url(),
+  DIRECT_URL: z.url(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),
-  NEXT_PUBLIC_SITE_URL: z.string().url(),
+  NEXT_PUBLIC_SITE_URL: z.url(),
 })
 
 export type Env = z.infer<typeof envSchema>
@@ -457,10 +519,30 @@ cp .env.example .env
 sed -i "s|generate_with_openssl_rand_base64_32|$(openssl rand -base64 32)|" .env
 ```
 
-- [ ] **Step 8: Confirm `.env` is git-ignored**
+- [ ] **Step 8: Confirm the right env files are ignored — and the right ones are not**
 
-Run: `git check-ignore -v .env`
-Expected: a line naming `.gitignore`. If it prints nothing, add `.env` to `.gitignore` before continuing — this is the difference between a secret and a published secret.
+Next's default `.gitignore` contains a blanket `.env*`, which also swallows
+`.env.example` and `.env.test`. Both must be committed: one documents the
+required variables, the other is what CI loads to run the suite. Add
+negations:
+
+```
+.env*
+!.env.example
+!.env.test
+```
+
+Then verify all three:
+
+```bash
+git check-ignore -v .env          # must print a .gitignore line
+git check-ignore -q .env.example  # must exit non-zero (i.e. NOT ignored)
+git check-ignore -q .env.test     # must exit non-zero
+```
+
+`.env` being ignored is the difference between a secret and a published
+secret. `.env.example` being ignored is the difference between a working CI
+run and a baffling one.
 
 - [ ] **Step 9: Commit** *(human operator)*
 
@@ -701,26 +783,63 @@ Expected: both `km_dev` and `km_test` are listed.
 ```bash
 pnpm add -D prisma
 pnpm add @prisma/client
-pnpm dlx prisma init --datasource-provider postgresql
+pnpm exec prisma init --datasource-provider postgresql
+```
+
+`prisma exec` rather than `dlx` uses the version just installed instead of
+re-resolving from the registry.
+
+**`prisma init` also writes ~500KB of agent-skill files you did not ask for** —
+`.agents/`, `.claude/skills/`, `.windsurf/skills/` and `skills-lock.json`. The
+`.claude/` one is loaded into Claude Code sessions in this project. Delete
+them:
+
+```bash
+rm -rf .agents .claude .windsurf skills-lock.json
 ```
 
 - [ ] **Step 4: Configure the datasource for pooled and direct connections**
 
-Replace the generator and datasource blocks in `prisma/schema.prisma`:
+Prisma 7 removed `directUrl` from the schema, and the datasource URL moved out
+of `schema.prisma` entirely into `prisma.config.ts`. The pooled/direct split
+still exists — it just lives in two places now.
+
+`prisma/schema.prisma`:
 
 ```prisma
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")   // pooled — used by the application
-  directUrl = env("DIRECT_URL")     // unpooled — used by migrations
+  provider = "postgresql"
 }
 ```
 
-Locally both point at the same Postgres. In production `DATABASE_URL` is Neon's pooled endpoint and `DIRECT_URL` its direct one. Getting this wrong surfaces as connection exhaustion under load — that is, exactly when tickets go on sale.
+`prisma.config.ts` (created by `prisma init`, needs `pnpm add -D dotenv`):
+
+```ts
+import 'dotenv/config'
+import { defineConfig } from 'prisma/config'
+
+export default defineConfig({
+  schema: 'prisma/schema.prisma',
+  migrations: { path: 'prisma/migrations' },
+  datasource: {
+    // The CLI (migrate, introspect) must use a DIRECT connection. The
+    // application connects separately, through a driver adapter pointed at
+    // the pooled DATABASE_URL. On Neon, migrations cannot run through the
+    // connection pooler.
+    url: process.env.DIRECT_URL ?? process.env.DATABASE_URL,
+  },
+})
+```
+
+Locally both variables point at the same Postgres. In production
+`DATABASE_URL` is Neon's pooled endpoint and `DIRECT_URL` its direct one.
+Getting this wrong surfaces as connection exhaustion under load — that is,
+exactly when tickets go on sale.
 
 - [ ] **Step 5: Write the Prisma client singleton**
 
@@ -728,20 +847,36 @@ Locally both point at the same Postgres. In production `DATABASE_URL` is Neon's 
 
 ```ts
 import 'server-only'
-import { PrismaClient } from '@prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
+import { PrismaClient } from '@/generated/prisma/client'
+import { env } from './env'
+
+// Prisma 7 requires a driver adapter — the bundled query engine is gone.
+// PrismaPg speaks plain TCP Postgres, which serves both the local Docker
+// container and Neon's pooled endpoint, so local and production use the
+// same code path. Migrations do NOT go through here: the CLI reads
+// DIRECT_URL from prisma.config.ts, because Neon's pooler cannot run them.
+function createClient(): PrismaClient {
+  const adapter = new PrismaPg({ connectionString: env.DATABASE_URL })
+
+  return new PrismaClient({
+    adapter,
+    log: env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+  })
+}
 
 // Next.js hot-reloads modules in development, which would otherwise open a
 // new pool on every edit until Postgres refuses connections.
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient }
 
-export const db =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-  })
+export const db = globalForPrisma.prisma ?? createClient()
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
+if (env.NODE_ENV !== 'production') globalForPrisma.prisma = db
 ```
+
+Install the adapter: `pnpm add @prisma/adapter-pg`. Also add
+`"postinstall": "prisma generate"` to `package.json` — the generated client is
+git-ignored build output, so CI must regenerate it before typechecking.
 
 - [ ] **Step 6: Add a placeholder model so the client can be generated**
 
@@ -1269,7 +1404,7 @@ Expected: `Currency` with `PLN`, `EUR`; `Locale` with `pl`, `en`, `de`.
 Note for later tasks: the Prisma client exports a `Locale` enum whose name
 collides with the `Locale` type in `@/lib/shared/locale`. Where both are
 needed in one file, import the Prisma one as `import type { $Enums } from
-'@prisma/client'` and refer to `$Enums.Locale`.
+'@/generated/prisma/client'` and refer to `$Enums.Locale`.
 
 - [ ] **Step 7: Verify the unique constraints exist in the database itself**
 
@@ -1394,14 +1529,17 @@ Expected: `5 passed`
 `scripts/create-admin.ts`:
 
 ```ts
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '../src/generated/prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
 import { randomBytes } from 'node:crypto'
 // Relative, not the @/ alias: this script runs under tsx outside Next's
 // module graph. Reusing hashPassword means the tuned argon2 parameters
 // apply to real accounts, not just to ones created through the app.
 import { hashPassword } from '../src/lib/server/password'
 
-const db = new PrismaClient()
+const db = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL! }),
+})
 
 async function main() {
   const [email, name, role = 'SCANNER'] = process.argv.slice(2)
@@ -1491,10 +1629,13 @@ git commit -m "feat: add argon2id password hashing and admin creation script"
 `prisma/seed.ts`:
 
 ```ts
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '../src/generated/prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
 import { hashPassword } from '../src/lib/server/password'
 
-const db = new PrismaClient()
+const db = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL! }),
+})
 
 async function main() {
   const swidnica = await db.venue.upsert({
@@ -1873,7 +2014,7 @@ Expected: FAIL — cannot resolve `@/lib/server/sessions`.
 ```ts
 import 'server-only'
 import { createHash, randomBytes } from 'node:crypto'
-import type { AdminRole, AdminUser } from '@prisma/client'
+import type { AdminRole, AdminUser } from '@/generated/prisma/client'
 import { db } from './db'
 
 // Two TTLs, because the two roles have opposite risks. A scanner phone is
@@ -2107,7 +2248,7 @@ Expected: FAIL — cannot resolve `@/lib/server/login`.
 
 ```ts
 import 'server-only'
-import type { AdminUser } from '@prisma/client'
+import type { AdminUser } from '@/generated/prisma/client'
 import { db } from './db'
 import { hashPassword, verifyPassword } from './password'
 
@@ -2186,7 +2327,7 @@ Expected: `9 passed`
 - [ ] **Step 7: Run the whole suite**
 
 Run: `pnpm test`
-Expected: all tests pass. Several files now truncate `AdminUser`; they do not interfere because `vitest.config.ts` set `fileParallelism: false` in Task 1. If you see rows vanishing mid-test, that setting has been lost — restore it rather than adding retries.
+Expected: all tests pass. Several files now truncate `AdminUser`; they do not interfere because `vitest.config.mts` set `fileParallelism: false` in Task 1. If you see rows vanishing mid-test, that setting has been lost — restore it rather than adding retries.
 
 - [ ] **Step 8: Commit** *(human operator)*
 
@@ -2221,7 +2362,7 @@ git commit -m "feat: add admin authentication with account lockout"
 import 'server-only'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import type { AdminUser } from '@prisma/client'
+import type { AdminUser } from '@/generated/prisma/client'
 import { createSession, deleteSession, findSessionUser } from './sessions'
 
 export const SESSION_COOKIE = 'km_session'
@@ -3380,7 +3521,7 @@ Expected: FAIL — cannot resolve `@/lib/server/audit`.
 
 ```ts
 import 'server-only'
-import type { Prisma } from '@prisma/client'
+import type { Prisma } from '@/generated/prisma/client'
 import { db } from './db'
 
 export type AuditEntry = {
@@ -3645,8 +3786,8 @@ export type EventInput = z.infer<typeof eventInputSchema>
 
 ```ts
 import 'server-only'
-import type { Event } from '@prisma/client'
-import { Prisma } from '@prisma/client'
+import type { Event } from '@/generated/prisma/client'
+import { Prisma } from '@/generated/prisma/client'
 import { db } from './db'
 import { recordAudit } from './audit'
 import { eventInputSchema, type EventInput } from '@/lib/shared/schemas'
@@ -4628,7 +4769,17 @@ In `package.json`:
 
 Set Vercel's Build Command to `pnpm vercel-build`.
 
-Migrations run against `DIRECT_URL`, which is why both connection strings are needed.
+Under Prisma 7 the two commands read different things, which is why both
+connection strings are required:
+
+- `prisma migrate deploy` uses `prisma.config.ts`, which resolves to
+  **`DIRECT_URL`** — Neon's pooler cannot run migrations.
+- the running application uses the `PrismaPg` adapter in
+  `src/lib/server/db.ts`, pointed at the pooled **`DATABASE_URL`**.
+
+`prisma generate` also runs from the `postinstall` hook, so the client exists
+before `next build` typechecks. Keeping it in `vercel-build` is belt-and-braces
+and costs about a second.
 
 - [ ] **Step 6: Deploy and verify the public side**
 
@@ -4643,8 +4794,11 @@ Expected: `/` redirects to `/pl`; the German page reports `lang="de"`.
 
 ```bash
 DATABASE_URL='<neon direct url>' DIRECT_URL='<neon direct url>' \
-  pnpm dlx tsx scripts/create-admin.ts admin@krzyzowa-music.eu "Administrator" ADMIN
+  pnpm exec tsx scripts/create-admin.ts admin@krzyzowa-music.eu "Administrator" ADMIN
 ```
+
+Both variables are set to the **direct** URL here: this is a one-off CLI run,
+not the application, so there is no reason to go through the pooler.
 
 Record the generated password in the festival's password manager. Do **not** run `pnpm db:seed` against production — the seed creates accounts with a known development password.
 

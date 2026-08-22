@@ -20,7 +20,7 @@ the system is still simple enough to test properly.
 | 0.3 | Tailwind CSS + the base component conventions (button, input, card). |
 | 0.4 | `src/lib/server/env.ts` — zod-validated environment. The app refuses to boot on a missing variable. Commit `.env.example`. |
 | 0.5 | `docker-compose.yml` with Postgres for local development; `Dockerfile` for the app. |
-| 0.6 | Prisma installed, connected to a Neon **development branch**, with `url` + `directUrl` configured for pooling. |
+| 0.6 | Prisma 7 installed with the `@prisma/adapter-pg` driver adapter (Prisma 7 requires one), connected to a Neon **development branch**. The CLI reads `DIRECT_URL` via `prisma.config.ts`; the application connects to the pooled `DATABASE_URL` through the adapter. A `postinstall: prisma generate` hook regenerates the git-ignored client. |
 | 0.7 | `next-intl` skeleton: `/pl`, `/en`, `/de` routing, message files, a locale switcher, and the two-root-layout route-group structure (`(shop)` and `(admin)`) that lets the shop carry `lang={locale}` while the admin carries `lang="pl"`. |
 | 0.8 | GitHub Actions CI: typecheck, lint, unit tests on every push. |
 | 0.9 | Vercel project connected, preview deploys on branches, production on `main`. |

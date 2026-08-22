@@ -34,6 +34,37 @@ Each row records what was decided and why, so nobody re-litigates it in month tw
 | Ticket delivery | **PDF attachment *and* a web link** | Attachments are the single most common delivery failure — spam filters, corporate mail servers, phones that won't open them. The link is the safety net and works on a phone in a queue. |
 | Legal seller | **Polish entity** (fundacja / sp. z o.o.) | Stripe account country PL, settlement in PLN. BLIK and Przelewy24 are native. |
 
+## Versions as built
+
+Recorded because several plan steps were written against older majors and had
+to be corrected while executing Tasks 1–4. Where a plan step disagrees with
+this table, trust the table.
+
+| Package | Assumed when planning | Actually installed | What changed |
+|---|---|---|---|
+| Next.js | 15 | **16.3.2** | `next lint` removed — the lint script is plain `eslint`. Turbopack is the dev default. |
+| React | 19 | 19.2.8 | — |
+| Prisma | 6 | **7.9.1** | `directUrl` removed from the schema; datasource URL moved to `prisma.config.ts`; a **driver adapter is mandatory**; the client generates as TypeScript into `src/generated/prisma`. |
+| Tailwind | 3 (a JS config was assumed) | **4.3.3** | No `tailwind.config.ts`; tokens live in an `@theme` block in CSS. |
+| Vitest | 3 | **4.1.11** | `poolOptions` removed (top-level now); `minWorkers` no longer exists. Config renamed to `.mts`. |
+| Zod | 3 | **4.4.3** | `z.string().url()` deprecated in favour of `z.url()`. |
+| Node | 20 | **24.14.1** | CI pinned to 24 to match. |
+| pnpm | 9+ | 10.33.2 | — |
+
+Three further environment facts worth recording:
+
+- **`create-next-app` cannot scaffold into a directory named `KM`.** npm forbids
+  capitals in package names and the tool derives the name from the directory.
+  The app was scaffolded under a temporary `km/` and moved in.
+- **`server-only` throws under Vitest.** It resolves to a no-op only under
+  React's `react-server` condition, which Vitest does not use, so every server
+  module fails to import. It is aliased to a stub in `vitest.config.mts`; the
+  real package still guards the Next.js build, which is where the guarantee
+  actually matters.
+- **`prisma init` writes ~500KB of agent-skill files** into `.agents/`,
+  `.claude/skills/`, `.windsurf/skills/` and `skills-lock.json`. These were
+  deleted; re-running `prisma init` will recreate them.
+
 ## On the monolith (and why it is not a security problem)
 
 The concern with putting front and back in one Next.js app is that the
