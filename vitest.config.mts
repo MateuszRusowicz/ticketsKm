@@ -24,6 +24,12 @@ export default defineConfig({
       // fileURLToPath rather than __dirname: this config is an ES module.
       // The .mts extension is what makes that unambiguous to Vite.
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+
+      // `server-only` throws on import unless resolved under React's
+      // "react-server" condition. Vitest does not use that condition, so
+      // every server module would fail to import. Stubbing it here is
+      // scoped to tests; the real package still guards the Next.js build.
+      'server-only': fileURLToPath(new URL('./tests/stubs/server-only.ts', import.meta.url)),
     },
   },
 })

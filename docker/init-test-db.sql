@@ -1,0 +1,1 @@
+CREATE DATABASE km_test OWNER km;
