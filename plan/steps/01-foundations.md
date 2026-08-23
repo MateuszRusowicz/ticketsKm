@@ -17,7 +17,7 @@
 Every task's requirements implicitly include this section.
 
 - **Money is always an integer in minor units** (grosze, eurocents). No floating-point money anywhere, at any layer.
-- **Every file under `src/lib/server/` begins with `import 'server-only'`** as its first line.
+- **Every file under `src/lib/server/` begins with `import 'server-only'`** as its first line. Consequently **CLI scripts cannot import from `src/lib/server/`** — they run under `tsx`, outside Next's module graph, where that import throws. Anything a script and the app must share goes in `src/lib/shared/`.
 - **Nothing under `src/lib/server/` may be imported from a `"use client"` file.** Shared types and Zod schemas go in `src/lib/shared/`.
 - **Only `NEXT_PUBLIC_*` environment variables reach the browser.**
 - **Package manager is `pnpm`.** Never `npm install` or `yarn`.
@@ -1507,28 +1507,43 @@ Expected: FAIL — cannot resolve `@/lib/server/password`.
 
 - [ ] **Step 4: Write the implementation**
 
+The parameters live in `shared/`, not `server/`. The `create-admin` script and
+the seed both run under `tsx`, where `import 'server-only'` throws — but an
+admin created by a script and one created through the app must hash
+identically, or the tuning is decorative. Sharing the numbers is what makes
+that true; they are parameters, not secrets.
+
+`src/lib/shared/password-options.ts`:
+
+```ts
+/**
+ * argon2id parameters, per OWASP's recommendation for interactive logins.
+ * Lives in shared/ so CLI scripts can reach them — see the note above.
+ */
+export const ARGON2_OPTIONS = {
+  memoryCost: 19_456, // 19 MiB
+  timeCost: 2,
+  parallelism: 1,
+} as const
+```
+
 `src/lib/server/password.ts`:
 
 ```ts
 import 'server-only'
 import { hash, verify } from '@node-rs/argon2'
-
-// argon2id with OWASP-recommended parameters for interactive logins.
-const OPTIONS = {
-  memoryCost: 19_456, // 19 MiB
-  timeCost: 2,
-  parallelism: 1,
-}
+import { ARGON2_OPTIONS } from '@/lib/shared/password-options'
 
 export async function hashPassword(plain: string): Promise<string> {
-  return hash(plain, OPTIONS)
+  return hash(plain, ARGON2_OPTIONS)
 }
 
 export async function verifyPassword(storedHash: string, plain: string): Promise<boolean> {
   try {
-    return await verify(storedHash, plain, OPTIONS)
+    return await verify(storedHash, plain, ARGON2_OPTIONS)
   } catch {
-    // A malformed or truncated hash must fail closed, not throw.
+    // A malformed or truncated hash must fail closed, not throw. Otherwise a
+    // corrupt row turns a failed login into a 500.
     return false
   }
 }
@@ -1547,10 +1562,11 @@ Expected: `5 passed`
 import { PrismaClient } from '../src/generated/prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { randomBytes } from 'node:crypto'
-// Relative, not the @/ alias: this script runs under tsx outside Next's
-// module graph. Reusing hashPassword means the tuned argon2 parameters
-// apply to real accounts, not just to ones created through the app.
-import { hashPassword } from '../src/lib/server/password'
+// argon2 is called directly rather than through lib/server/password.ts:
+// that module starts with `import 'server-only'`, which throws under tsx.
+// The PARAMETERS are shared, which is what actually matters.
+import { hash } from '@node-rs/argon2'
+import { ARGON2_OPTIONS } from '../src/lib/shared/password-options'
 
 const db = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL! }),
@@ -1580,7 +1596,7 @@ async function main() {
       email: email.trim().toLowerCase(),
       name,
       role,
-      passwordHash: await hashPassword(password),
+      passwordHash: await hash(password, ARGON2_OPTIONS),
     },
   })
 
@@ -1605,8 +1621,18 @@ Add to `package.json` scripts:
 
 - [ ] **Step 7: Verify the script**
 
-Run: `pnpm admin:create test@example.com "Test Person" SCANNER`
-Expected: a generated password is printed. Confirm the row exists:
+Run: `pnpm admin:create test@EXAMPLE.com "Test Person" SCANNER`
+Expected: a generated password is printed, and the confirmation line shows the
+address **lowercased**. Then confirm the stored hash carries the tuned
+parameters — not argon2's defaults:
+
+```bash
+docker compose exec -T postgres psql -U km -d km_dev -t -c \
+  "SELECT email, role, split_part(\"passwordHash\", '\$', 4) FROM \"AdminUser\";"
+```
+
+Expected: `m=19456,t=2,p=1`. Anything else means the shared options were not
+applied. Also confirm the row exists:
 
 ```bash
 docker compose exec postgres psql -U km -d km_dev -c \
@@ -1636,7 +1662,7 @@ git commit -m "feat: add argon2id password hashing and admin creation script"
 - Modify: `package.json`
 
 **Interfaces:**
-- Consumes: the schema from Task 5, `hashPassword` from Task 6.
+- Consumes: the schema from Task 5, `ARGON2_OPTIONS` from Task 6.
 - Produces: `pnpm db:seed`.
 
 - [ ] **Step 1: Write the seed script**
@@ -1646,7 +1672,10 @@ git commit -m "feat: add argon2id password hashing and admin creation script"
 ```ts
 import { PrismaClient } from '../src/generated/prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
-import { hashPassword } from '../src/lib/server/password'
+// Direct argon2 call with shared parameters — the seed runs under tsx,
+// where lib/server/password.ts's `import 'server-only'` would throw.
+import { hash } from '@node-rs/argon2'
+import { ARGON2_OPTIONS } from '../src/lib/shared/password-options'
 
 const db = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL! }),
@@ -1735,7 +1764,7 @@ async function main() {
     })
   }
 
-  const password = await hashPassword('DevPassword123!')
+  const password = await hash('DevPassword123!', ARGON2_OPTIONS)
 
   await db.adminUser.upsert({
     where: { email: 'admin@krzyzowa-music.eu' },
