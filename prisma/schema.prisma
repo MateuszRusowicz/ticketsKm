@@ -214,19 +214,21 @@ model PromoCode {
 }
 
 model AdminUser {
-  id             String         @id @default(uuid())
-  email          String         @unique
-  passwordHash   String
-  name           String
-  role           AdminRole      @default(SCANNER)
-  active         Boolean        @default(true)
-  lastLoginAt    DateTime?
-  sessions       AdminSession[]
-  auditLogs      AuditLog[]
-  issuedOrders   Order[]
-  scannedTickets Ticket[]
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id               String         @id @default(uuid())
+  email            String         @unique
+  passwordHash     String
+  name             String
+  role             AdminRole      @default(SCANNER)
+  active           Boolean        @default(true)
+  lastLoginAt      DateTime?
+  failedLoginCount Int            @default(0)
+  lockedUntil      DateTime?
+  sessions         AdminSession[]
+  auditLogs        AuditLog[]
+  issuedOrders     Order[]
+  scannedTickets   Ticket[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 }
 
 // Not in 02-data-model.md. Database-backed sessions are used instead of
