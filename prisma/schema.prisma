@@ -7,12 +7,261 @@ datasource db {
   provider = "postgresql"
 }
 
+enum EventStatus {
+  DRAFT
+  ON_SALE
+  SOLD_OUT
+  CLOSED
+  CANCELLED
+}
+
+enum OrderKind {
+  PURCHASE
+  INVITATION
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum TicketStatus {
+  VALID
+  USED
+  REVOKED
+}
+
+enum PromoKind {
+  PERCENT
+  FIXED
+}
+
+enum AdminRole {
+  ADMIN
+  SCANNER
+}
+
+// The design fixes these sets exactly ("Locales are exactly pl, en, de";
+// "Currencies are exactly PLN and EUR"). Storing them as free-form strings
+// would let a mis-cased "eur" or a stray "sk" reach the database and crash
+// rendering later. Enums cost nothing now and avoid a data migration once
+// orders exist.
+enum Locale {
+  pl
+  en
+  de
+}
+
+enum Currency {
+  PLN
+  EUR
+}
+
 model Venue {
   id              String   @id @default(uuid())
   name            String
   address         String
   city            String
   defaultCapacity Int
+  mapUrl          String?
+  events          Event[]
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+model Event {
+  id           String             @id @default(uuid())
+  slug         String             @unique
+  venue        Venue              @relation(fields: [venueId], references: [id])
+  venueId      String
+  startsAt     DateTime
+  doorsAt      DateTime?
+  capacity     Int
+  status       EventStatus        @default(DRAFT)
+  salesOpenAt  DateTime?
+  salesCloseAt DateTime?
+  imageUrl     String?
+  translations EventTranslation[]
+  ticketTypes  TicketType[]
+  tickets      Ticket[]
+  promoCodes   PromoCode[]
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([status, startsAt])
+}
+
+model EventTranslation {
+  id          String  @id @default(uuid())
+  event       Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId     String
+  locale      Locale
+  title       String
+  description String
+  performers  String
+  note        String?
+
+  @@unique([eventId, locale])
+}
+
+model TicketType {
+  id          String      @id @default(uuid())
+  event       Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId     String
+  pricePln    Int
+  priceEur    Int
+  maxPerOrder Int         @default(10)
+  soldCount   Int         @default(0)
+  heldCount   Int         @default(0)
+  active      Boolean     @default(true)
+  orderItems  OrderItem[]
+  tickets     Ticket[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([eventId])
+}
+
+model Order {
+  id                    String      @id @default(uuid())
+  reference             String      @unique
+  kind                  OrderKind   @default(PURCHASE)
+  email                 String
+  firstName             String
+  lastName              String
+  phone                 String?
+  locale                Locale
+  currency              Currency
+  subtotal              Int
+  discount              Int         @default(0)
+  total                 Int
+  status                OrderStatus @default(PENDING)
+  stripePaymentIntentId String?     @unique
+  promoCode             PromoCode?  @relation(fields: [promoCodeId], references: [id])
+  promoCodeId           String?
+  needsInvoice          Boolean     @default(false)
+  companyName           String?
+  nip                   String?
+  invoiceAddress        String?
+  issuedByAdmin         AdminUser?  @relation(fields: [issuedByAdminId], references: [id])
+  issuedByAdminId       String?
+  items                 OrderItem[]
+  tickets               Ticket[]
+  createdAt             DateTime    @default(now())
+  holdExpiresAt         DateTime?
+  paidAt                DateTime?
+  emailSentAt           DateTime?
+  cancelledAt           DateTime?
+
+  @@index([email])
+  @@index([status, holdExpiresAt])
+}
+
+model OrderItem {
+  id           String     @id @default(uuid())
+  order        Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId      String
+  ticketType   TicketType @relation(fields: [ticketTypeId], references: [id])
+  ticketTypeId String
+  quantity     Int
+  unitPrice    Int
+  currency     Currency
+
+  @@index([orderId])
+}
+
+model Ticket {
+  id            String       @id @default(uuid())
+  code          String       @unique
+  order         Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId       String
+  event         Event        @relation(fields: [eventId], references: [id])
+  eventId       String
+  ticketType    TicketType   @relation(fields: [ticketTypeId], references: [id])
+  ticketTypeId  String
+  holderName    String?
+  status        TicketStatus @default(VALID)
+  usedAt        DateTime?
+  usedByAdmin   AdminUser?   @relation(fields: [usedByAdminId], references: [id])
+  usedByAdminId String?
+  createdAt     DateTime     @default(now())
+
+  @@index([eventId, status])
+  @@index([orderId])
+}
+
+model PromoCode {
+  id         String    @id @default(uuid())
+  code       String    @unique
+  kind       PromoKind
+  value      Int
+  currency   Currency?
+  maxUses    Int?
+  usedCount  Int       @default(0)
+  validFrom  DateTime?
+  validUntil DateTime?
+  event      Event?    @relation(fields: [eventId], references: [id])
+  eventId    String?
+  active     Boolean   @default(true)
+  orders     Order[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model AdminUser {
+  id             String         @id @default(uuid())
+  email          String         @unique
+  passwordHash   String
+  name           String
+  role           AdminRole      @default(SCANNER)
+  active         Boolean        @default(true)
+  lastLoginAt    DateTime?
+  sessions       AdminSession[]
+  auditLogs      AuditLog[]
+  issuedOrders   Order[]
+  scannedTickets Ticket[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+// Not in 02-data-model.md. Database-backed sessions are used instead of
+// JWTs so that a session can be revoked immediately — a phone handed to a
+// volunteer at the door must be revocable the moment it goes missing.
+model AdminSession {
+  id          String    @id @default(uuid())
+  tokenHash   String    @unique
+  admin       AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  adminUserId String
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+
+  @@index([adminUserId])
+  @@index([expiresAt])
+}
+
+model StripeWebhookEvent {
+  stripeEventId String    @id
+  type          String
+  receivedAt    DateTime  @default(now())
+  processedAt   DateTime?
+  error         String?
+}
+
+model AuditLog {
+  id         String     @id @default(uuid())
+  actor      AdminUser? @relation(fields: [actorId], references: [id])
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  meta       Json?
+  createdAt  DateTime   @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }
