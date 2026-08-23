@@ -1833,7 +1833,19 @@ import { execSync } from 'node:child_process'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { db } from '@/lib/server/db'
 
-beforeAll(() => {
+beforeAll(async () => {
+  // Test files run sequentially against ONE database, and earlier files
+  // leave rows behind after their final test. Without this truncate the
+  // exact-count assertions below pick up that residue and fail in a way
+  // that depends on file ordering — the worst kind of flake.
+  await db.$executeRawUnsafe(`
+    TRUNCATE TABLE
+      "AuditLog", "Ticket", "OrderItem", "Order", "PromoCode",
+      "TicketType", "EventTranslation", "Event", "Venue",
+      "AdminSession", "AdminUser", "StripeWebhookEvent"
+    RESTART IDENTITY CASCADE
+  `)
+
   // Run twice: the second run is the idempotency assertion.
   execSync('pnpm exec tsx prisma/seed.ts', { stdio: 'pipe', env: { ...process.env } })
   execSync('pnpm exec tsx prisma/seed.ts', { stdio: 'pipe', env: { ...process.env } })
@@ -1870,10 +1882,17 @@ describe('seed', () => {
 })
 ```
 
-- [ ] **Step 7: Run the seed test**
+- [ ] **Step 7: Run the seed test — then the whole suite, twice**
 
 Run: `pnpm test tests/prisma/seed.test.ts`
 Expected: `4 passed`
+
+Passing in isolation proves little here: this file asserts exact row counts,
+so it is the one most exposed to cross-file residue. Run the full suite twice
+and confirm the totals are identical both times.
+
+Run: `pnpm test` (twice)
+Expected: the same counts each run.
 
 - [ ] **Step 8: Commit** *(human operator)*
 
