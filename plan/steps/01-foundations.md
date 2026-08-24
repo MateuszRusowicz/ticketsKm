@@ -3169,7 +3169,7 @@ git commit -m "feat: add design tokens, self-hosted fonts and contrast tests"
 ## Task 12: Localised routing
 
 **Files:**
-- Create: `src/i18n/routing.ts`, `src/i18n/request.ts`, `src/middleware.ts`, `src/messages/{pl,en,de}.json`
+- Create: `src/i18n/routing.ts`, `src/i18n/request.ts`, `src/proxy.ts`, `src/messages/{pl,en,de}.json`
 - Create: `src/app/(shop)/[locale]/layout.tsx`, `src/app/(shop)/[locale]/page.tsx`
 - Create: `src/components/LocaleSwitcher.tsx`
 - Move: `src/app/admin/**` → `src/app/(admin)/admin/**`
@@ -3334,7 +3334,9 @@ export default getRequestConfig(async ({ requestLocale }) => {
 })
 ```
 
-`src/middleware.ts`:
+`src/proxy.ts` — **not `middleware.ts`**. Next 16 renamed the file convention
+and warns on the old name at build time. next-intl still exports
+`createMiddleware`; only the filename changed.
 
 ```ts
 import createMiddleware from 'next-intl/middleware'
@@ -3480,6 +3482,16 @@ git mv src/app/admin 'src/app/(admin)/admin'
 rm src/app/layout.tsx src/app/page.tsx
 ```
 
+**Route groups disappear from URLs but not from import paths.** Anything
+importing the admin server actions must be updated:
+
+```diff
+- import { loginAction } from '@/app/admin/login/actions'
++ import { loginAction } from '@/app/(admin)/admin/login/actions'
+```
+
+`tests/app/admin/login-action.test.ts` from Task 10 is the one that breaks.
+
 Then replace `src/app/(admin)/admin/layout.tsx` — it is now a root layout and
 must render the document itself:
 
@@ -3541,10 +3553,13 @@ Expected: `/` redirects to `/pl`; `/admin` redirects to `/admin/login` — **not
 Route groups must not appear in any URL. Confirm:
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" 'http://localhost:3000/(shop)/pl'
+curl -s -o /dev/null -w "final: %{http_code}  url: %{url_effective}\n" -L 'http://localhost:3000/(shop)/pl'
 ```
 
-Expected: `404`.
+Expected: a final **404**. Follow the redirects (`-L`) rather than reading the
+first status: next-intl's proxy adds a locale prefix first, so the immediate
+response is a 307 to `/pl/(shop)/pl`, which then 404s. Checking only the first
+status would look like the group *is* routable when it is not.
 
 - [ ] **Step 12: Verify the locale switcher works**
 
@@ -3567,6 +3582,20 @@ On `http://localhost:3000/de`, set the viewport to 320px in DevTools and
 temporarily add a heading containing `Kammermusikfestival`.
 Expected: the word breaks with a hyphen rather than overflowing the column.
 Remove the temporary heading afterwards.
+
+- [ ] **Step 12c: Re-run lint — the restructure surfaces new errors**
+
+Two rules only start firing once the pages sit at a resolvable route:
+
+- `@next/next/no-html-link-for-pages` — the dashboard's `<a href="/admin/events">`
+  must become `<Link>` from `next/link`. (The admin is not localised, so this is
+  `next/link`, **not** next-intl's `Link`.)
+- `@typescript-eslint/no-explicit-any` — the message-catalogue walker in
+  `tests/i18n/messages.test.ts` needs `reduce<unknown>` with a cast rather than
+  `reduce<any>`.
+
+Run: `pnpm lint`
+Expected: no errors.
 
 - [ ] **Step 13: Commit** *(human operator)*
 

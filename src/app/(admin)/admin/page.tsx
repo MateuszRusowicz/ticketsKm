@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { requireAdmin } from '@/lib/server/auth'
 import { logoutAction } from './login/actions'
 
@@ -12,9 +13,9 @@ export default async function AdminHome() {
       </p>
 
       <nav className="mt-8">
-        <a href="/admin/events" className="text-[var(--color-accent)] underline">
+        <Link href="/admin/events" className="text-accent underline">
           Koncerty
-        </a>
+        </Link>
       </nav>
 
       <form action={logoutAction} className="mt-8">

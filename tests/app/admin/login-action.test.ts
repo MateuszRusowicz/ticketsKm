@@ -22,7 +22,7 @@ vi.mock('next/navigation', () => ({
 import { db } from '@/lib/server/db'
 import { hashPassword } from '@/lib/server/password'
 import { SESSION_COOKIE } from '@/lib/server/auth'
-import { loginAction } from '@/app/admin/login/actions'
+import { loginAction } from '@/app/(admin)/admin/login/actions'
 
 const PASSWORD = 'CorrectHorseBattery1!'
 
