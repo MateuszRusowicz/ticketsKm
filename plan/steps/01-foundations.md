@@ -3096,33 +3096,66 @@ Expected: exits 0.
 
 - [ ] **Step 6a: Verify the generated utilities exist**
 
-Add `<p className="bg-surface text-accent border border-border-input">test</p>`
-temporarily to any page, then:
+Tailwind only emits a utility if something uses it, so put the token classes on
+a page first — `src/app/page.tsx` is fine, Task 12 replaces it anyway:
 
-Run: `pnpm build`
-Expected: build succeeds and the compiled CSS contains a `.bg-surface` rule:
-
-```bash
-grep -rho '\.bg-surface' .next/static/css/*.css | head -1
+```tsx
+<main className="bg-surface text-text-primary border border-border-input p-4">
+  <h1 className="text-accent">Kościół Pokoju — Świdnica</h1>
+  <p className="text-text-secondary">Wieczór Bachowski · Karłowicz</p>
+</main>
 ```
 
-Expected: `.bg-surface`. If it prints nothing, the tokens are not inside
-`@theme` and only `var(--color-*)` usage will work. Remove the temporary
-element afterwards.
+Then build and check the emitted CSS. **Find the chunk rather than assuming a
+path** — Turbopack writes to `.next/static/chunks/*.css`, not the
+`.next/static/css/` webpack used:
+
+```bash
+pnpm build
+CSS=$(find .next -name "*.css" -not -path "*/cache/*" | head -1)
+for u in bg-surface text-accent text-text-secondary border-border-input; do
+  printf '%-24s ' ".$u"; grep -q "\.$u" "$CSS" && echo emitted || echo MISSING
+done
+```
+
+Expected: all four `emitted`. If they are `MISSING`, the tokens are not inside
+`@theme` and only `var(--color-*)` usage will work.
+
+Note the doubled words in `text-text-secondary` and `border-border-input`: that
+is the cost of keeping the token names exactly as the design document specifies.
+Renaming them to read better in markup would break the single source of truth
+the contrast test relies on.
 
 - [ ] **Step 7: Verify the font is served from our own origin**
 
+`next/font` declares `@font-face` inside a CSS chunk using **relative** URLs, so
+grepping the HTML for `href=".woff2"` finds nothing even when everything is
+correct. Check the CSS chunk instead:
+
 ```bash
-pnpm build && pnpm start &
-sleep 5
-curl -s http://localhost:3000/ | grep -o 'href="[^"]*\.woff2"' | head -3
+CSS=$(find .next -name "*.css" -not -path "*/cache/*" | head -1)
+grep -oE "src:url\([^)]*\)" "$CSS" | head -4
+grep -c 'gstatic\|googleapis' "$CSS"
 ```
 
-Expected: paths beginning `/_next/static/media/…`. If any URL points at `fonts.gstatic.com`, the font is not self-hosted and the GDPR issue above remains — fix before continuing.
+Expected: `src:url(../media/….woff2)` paths, and a count of **0** for external
+hosts. Any `fonts.gstatic.com` reference means the font is not self-hosted and
+the GDPR problem described above is live.
 
-- [ ] **Step 8: Verify Polish diacritics render in the loaded face**
+- [ ] **Step 8: Verify the latin-ext subset is actually loaded**
 
-Open the login page and confirm "Hasło" renders with a proper `ł`, not a fallback glyph. Check in DevTools → Network that a `latin-ext` subset file was fetched.
+Polish diacritics live outside Latin-1: `ł` is U+0142, `ś` U+015B, `ż` U+017C,
+`ć` U+0107, `ę` U+0119, `ą` U+0105, `ń` U+0144. Without the `latin-ext` subset
+they fall back to a different face mid-word. Confirm the range is present:
+
+```bash
+CSS=$(find .next -name "*.css" -not -path "*/cache/*" | head -1)
+grep -ohE 'unicode-range:U\+100[^;]*' "$CSS" | head -1
+```
+
+Expected: a range starting `U+100-2BA`, which covers all seven characters
+above. Then open the login page and confirm "Hasło" renders with a proper `ł`
+rather than a substituted glyph.
 
 - [ ] **Step 9: Commit** *(human operator)*
 

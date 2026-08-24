@@ -1,26 +1,58 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --color-background: #FFFFFF;
+  --color-surface: #F8F9FA;
+  --color-text-primary: #1A1A1A;
+  --color-text-secondary: #4A4A4A;
+  --color-accent: #C4122D;
+  --color-accent-hover: #A00F25;
+  --color-border: #E0E0E0;
+  --color-border-strong: #949494;
+  --color-border-input: #757575;
+  --color-success: #1E6B3A;
+  --color-warning: #8A5A00;
+
+  --font-primary: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-secondary: var(--font-merriweather), Georgia, 'Times New Roman', serif;
+
+  --space-1: 0.5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+  --space-4: 2rem;
+  --space-6: 3rem;
+  --space-8: 4rem;
+  --space-12: 6rem;
+
+  --radius: 2px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: var(--font-primary);
+  font-weight: 400;
 }
+
+h1, h2, h3 {
+  font-family: var(--font-secondary);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Hyphenation is what stops "Kammermusikfestival" overflowing a narrow
+   column. It only works when <html lang> is set — Task 12 wires that up. */
+h1, h2, h3, p {
+  hyphens: auto;
+  overflow-wrap: break-word;
+}
+
+h1 { font-size: clamp(1.75rem, 1.2rem + 2.2vw, 3rem); line-height: 1.15; }
+h2 { font-size: clamp(1.375rem, 1.1rem + 1.2vw, 2rem); line-height: 1.25; }
+p  { font-size: clamp(1rem, 0.96rem + 0.2vw, 1.125rem); line-height: 1.65; }
+
+.price, .order-reference { font-variant-numeric: tabular-nums; }
