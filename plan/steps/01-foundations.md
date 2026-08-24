@@ -4479,7 +4479,12 @@ The comment on the tab panels is load-bearing: rendering only the active locale 
 
 `src/app/(admin)/admin/events/page.tsx`:
 
+Internal navigation uses `next/link`, not `<a>` — `@next/next/no-html-link-for-pages`
+is an **error**, not a warning, and it fires for both the "Dodaj koncert" button
+and the per-concert detail link.
+
 ```tsx
+import Link from 'next/link'
 import { requireAdmin } from '@/lib/server/auth'
 import { db } from '@/lib/server/db'
 import { formatMoney } from '@/lib/shared/money'
@@ -4507,12 +4512,12 @@ export default async function EventsPage() {
     <main className="mx-auto max-w-[1200px] px-8 py-16">
       <div className="flex items-center justify-between">
         <h1 className="font-serif text-3xl font-bold">Koncerty</h1>
-        <a
+        <Link
           href="/admin/events/new"
-          className="min-h-[48px] rounded-[2px] bg-[var(--color-accent)] px-6 py-3 font-semibold text-white"
+          className="min-h-[48px] rounded-[2px] bg-accent px-6 py-3 font-semibold text-white"
         >
           Dodaj koncert
-        </a>
+        </Link>
       </div>
 
       <table className="mt-8 w-full border-collapse text-left">
@@ -4534,9 +4539,9 @@ export default async function EventsPage() {
             return (
               <tr key={e.id} className="border-b border-[var(--color-border)]">
                 <td className="py-3">
-                  <a href={`/admin/events/${e.id}`} className="text-[var(--color-accent)] underline">
+                  <Link href={`/admin/events/${e.id}`} className="text-accent underline">
                     {e.translations[0]?.title ?? e.slug}
-                  </a>
+                  </Link>
                 </td>
                 <td>{when.format(e.startsAt)}</td>
                 <td className="text-[var(--color-text-secondary)]">{e.venue.name}</td>
@@ -4700,6 +4705,23 @@ docker compose exec postgres psql -U km -d km_dev -c \
 ```
 
 Expected: three rows. **If only one row appears, the tab panels are being unmounted** — re-read Task 15 step 2.
+
+Then confirm the stored instant is the right one. **`AT TIME ZONE` on a
+`timestamp without time zone` interprets rather than converts**, so the obvious
+single-cast query runs the conversion backwards and makes a correct 19:00 look
+like 15:00. Prisma maps `DateTime` to `timestamp(3)` without a zone, so the
+double cast is required:
+
+```bash
+docker compose exec -T postgres psql -U km -d km_dev -t -c \
+  "SELECT slug, \"startsAt\" AS stored_utc,
+          (\"startsAt\" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Warsaw' AS warsaw
+     FROM \"Event\" ORDER BY \"startsAt\";"
+```
+
+Expected for a concert entered as 19:00 in August: `stored_utc` = `17:00:00`,
+`warsaw` = `19:00:00`. If both columns read the same, the double cast was
+dropped.
 
 Also confirm the price stored as minor units:
 
