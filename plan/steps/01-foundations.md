@@ -4907,103 +4907,14 @@ git commit -m "feat: add admin event list, creation and editing with three-langu
 
 ## Task 16: Deploy
 
-**Files:**
-- Create: `vercel.json`
-- Modify: `.github/workflows/ci.yml` (no change if already correct)
+**Superseded by [`02-deployment.md`](02-deployment.md).**
 
-**Interfaces:**
-- Consumes: everything above.
-- Produces: a reachable preview and production URL.
+This task was written before Prisma 7 removed `directUrl`, and it was too thin
+for work that involves three external accounts, DNS propagation and a backup
+you have to verify by actually restoring it. Deployment is now its own plan.
 
-- [ ] **Step 1: Create the Neon project**
-
-At console.neon.tech, create a project in the **Frankfurt (eu-central-1)** region. Create two branches: `production` and `development`.
-
-Copy from the production branch: the **pooled** connection string (contains `-pooler`) and the **direct** one.
-
-- [ ] **Step 2: Verify the region**
-
-Confirm in the Neon dashboard that the project region reads `eu-central-1`. Data residency in the EU is a stated requirement — see [`07-security-and-testing.md`](../07-security-and-testing.md).
-
-- [ ] **Step 3: Create the Vercel project**
-
-Import the repository. Set the framework preset to Next.js. Set the function region to **`fra1`** in project settings.
-
-Note: the Vercel **Hobby tier prohibits commercial use**. Selling tickets requires Pro. Confirm the plan before go-live.
-
-- [ ] **Step 4: Set the environment variables in Vercel**
-
-For Production and Preview:
-
-```
-DATABASE_URL          = <Neon pooled connection string>
-DIRECT_URL            = <Neon direct connection string>
-SESSION_SECRET        = <openssl rand -base64 32 — a NEW value, not the local one>
-NEXT_PUBLIC_SITE_URL  = https://<your-vercel-domain>
-```
-
-- [ ] **Step 5: Add the migration step to the build**
-
-In `package.json`:
-
-```json
-"vercel-build": "prisma migrate deploy && prisma generate && next build"
-```
-
-Set Vercel's Build Command to `pnpm vercel-build`.
-
-Under Prisma 7 the two commands read different things, which is why both
-connection strings are required:
-
-- `prisma migrate deploy` uses `prisma.config.ts`, which resolves to
-  **`DIRECT_URL`** — Neon's pooler cannot run migrations.
-- the running application uses the `PrismaPg` adapter in
-  `src/lib/server/db.ts`, pointed at the pooled **`DATABASE_URL`**.
-
-`prisma generate` also runs from the `postinstall` hook, so the client exists
-before `next build` typechecks. Keeping it in `vercel-build` is belt-and-braces
-and costs about a second.
-
-- [ ] **Step 6: Deploy and verify the public side**
-
-```bash
-curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" https://<domain>/
-curl -s https://<domain>/de | grep -o '<html lang="[a-z]*"'
-```
-
-Expected: `/` redirects to `/pl`; the German page reports `lang="de"`.
-
-- [ ] **Step 7: Create the production admin account**
-
-```bash
-DATABASE_URL='<neon direct url>' DIRECT_URL='<neon direct url>' \
-  pnpm exec tsx scripts/create-admin.ts admin@krzyzowa-music.eu "Administrator" ADMIN
-```
-
-Both variables are set to the **direct** URL here: this is a one-off CLI run,
-not the application, so there is no reason to go through the pooler.
-
-Record the generated password in the festival's password manager. Do **not** run `pnpm db:seed` against production — the seed creates accounts with a known development password.
-
-- [ ] **Step 8: Verify login and cookie security in production**
-
-Log in at `https://<domain>/admin/login`.
-Expected: the dashboard renders. In DevTools, confirm the `km_session` cookie has **`Secure`** as well as `HttpOnly`. If `Secure` is missing, `NODE_ENV` is not `production` in the deployment — stop and fix it.
-
-- [ ] **Step 9: Verify no secret reached the browser bundle**
-
-```bash
-curl -s https://<domain>/pl | grep -Eo 'postgresql://|SESSION_SECRET' || echo "clean"
-```
-
-Expected: `clean`.
-
-- [ ] **Step 10: Commit** *(human operator)*
-
-```bash
-git add -A
-git commit -m "chore: add Vercel build configuration"
-```
+Nothing else in Plan 01 depends on it: the application runs locally in full
+without it.
 
 ---
 
@@ -5025,7 +4936,6 @@ Every box below must be checked before Plan 02 begins.
 - [ ] Account lockout triggers after five failed logins, and lapses cleanly
 - [ ] Per-IP login rate limiting refuses the eleventh attempt in a minute
 - [ ] The session cookie is `HttpOnly` and `Secure` in production
-- [ ] Production is deployed with a Frankfurt Neon database and a real admin account
 - [ ] No secret appears in the client bundle
 
 ---

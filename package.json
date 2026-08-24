@@ -14,7 +14,8 @@
     "db:migrate": "dotenv -e .env -- prisma migrate dev",
     "admin:create": "dotenv -e .env -- tsx scripts/create-admin.ts",
     "db:seed": "dotenv -e .env -- tsx prisma/seed.ts",
-    "db:reset": "dotenv -e .env -- prisma migrate reset --force"
+    "db:reset": "dotenv -e .env -- prisma migrate reset --force",
+    "vercel-build": "prisma migrate deploy && prisma generate && next build"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.1.0",

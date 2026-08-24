@@ -30,13 +30,17 @@ expected result, so progress is verified rather than assumed.
 
 | Plan | Covers | Done when |
 |---|---|---|
-| [01 — Foundations](steps/01-foundations.md) | Phases 0–1 | An admin logs in and creates a concert in three languages |
-| 02 — Public programme | Phase 2 | A visitor browses in 3 languages and reaches a validated form |
-| 03 — Inventory | Phase 3 | Concurrency tests prove the system cannot oversell |
-| 04 — Payments | Phases 4–5 | A real test payment produces a ticket email with a scannable QR |
-| 05 — Money out | Phase 6 | Invitations, promo codes and refunds work without the Stripe dashboard |
-| 06 — Scanner | Phase 7 | Two phones scan one ticket; exactly one shows green |
-| 07 — Launch | Phase 8 | A live transaction succeeds and is refunded |
+| [01 — Foundations](steps/01-foundations.md) ✅ | Phases 0–1 | An admin logs in and creates a concert in three languages |
+| [02 — Deployment](steps/02-deployment.md) | Phase 0 infra | The app runs at `bilety.krzyzowa-music.eu` with a verified backup |
+| 03 — Public programme | Phase 2 | A visitor browses in 3 languages and reaches a validated form |
+| 04 — Inventory | Phase 3 | Concurrency tests prove the system cannot oversell |
+| 05 — Payments | Phases 4–5 | A real test payment produces a ticket email with a scannable QR |
+| 06 — Money out | Phase 6 | Invitations, promo codes and refunds work without the Stripe dashboard |
+| 07 — Scanner | Phase 7 | Two phones scan one ticket; exactly one shows green |
+| 08 — Launch | Phase 8 | A live transaction succeeds and is refunded |
+
+Plan 02 can run at any point after Plan 01 — nothing later depends on it, so
+deploy when you want a preview URL rather than because the sequence says so.
 
 Plans 02–07 are written just before each is executed, so they reflect the code
 that actually exists rather than the code that was imagined eight weeks earlier.
