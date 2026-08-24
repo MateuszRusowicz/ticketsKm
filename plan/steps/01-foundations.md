@@ -2607,8 +2607,12 @@ export function pruneRateLimits(now = Date.now()): void {
 `tests/lib/server/ratelimit.test.ts`:
 
 ```ts
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { pruneRateLimits, rateLimit } from '@/lib/server/ratelimit'
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 describe('rateLimit', () => {
   it('allows up to the limit then refuses', () => {
@@ -2625,18 +2629,30 @@ describe('rateLimit', () => {
     expect(rateLimit(b, 1, 60_000)).toBe(true)
   })
 
+  // Fake timers, not a short real window: with a 1ms window the second
+  // call can legitimately land after it has already expired, so the test
+  // would pass or fail depending on machine speed.
   it('resets after the window', () => {
+    vi.useFakeTimers()
     const key = `k${Math.random()}`
-    expect(rateLimit(key, 1, 1)).toBe(true)
-    expect(rateLimit(key, 1, 1)).toBe(false)
-    return new Promise((r) => setTimeout(r, 5)).then(() => {
-      expect(rateLimit(key, 1, 1)).toBe(true)
-    })
+
+    expect(rateLimit(key, 1, 60_000)).toBe(true)
+    expect(rateLimit(key, 1, 60_000)).toBe(false)
+
+    vi.advanceTimersByTime(60_001)
+    expect(rateLimit(key, 1, 60_000)).toBe(true)
   })
 
   it('prunes expired windows', () => {
-    rateLimit(`p${Math.random()}`, 1, 1)
-    expect(() => pruneRateLimits(Date.now() + 10_000)).not.toThrow()
+    vi.useFakeTimers()
+    const key = `p${Math.random()}`
+    rateLimit(key, 1, 60_000)
+
+    vi.advanceTimersByTime(60_001)
+    pruneRateLimits()
+
+    // Pruned, so a fresh window starts and the call is allowed.
+    expect(rateLimit(key, 1, 60_000)).toBe(true)
   })
 })
 ```
@@ -2808,6 +2824,26 @@ curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" http://localhost:3000/a
 ```
 
 Expected: a `307` (or `302`) to `/admin/login`.
+
+- [ ] **Step 8a: Write the login-action integration test**
+
+The browser checks below are worth doing once, but they are manual and cannot
+run in CI. Cover the same ground automatically first, in
+`tests/app/admin/login-action.test.ts`: mock `next/headers` (cookies **and**
+headers) and `next/navigation`, then assert that
+
+1. a correct ADMIN login throws `REDIRECT:/admin` and sets the session cookie;
+2. a SCANNER is sent to `/admin/scan`, not the dashboard;
+3. a wrong password returns the error and sets **no** cookie;
+4. a sixth attempt reports the lockout;
+5. eleven attempts from one IP trip the rate limiter **even when no such
+   account exists** — an attacker spraying addresses must be throttled too.
+
+Give each test a distinct fake IP: the limiter is a module-level in-memory
+`Map`, so counters leak between tests otherwise.
+
+Run: `pnpm test tests/app/admin/login-action.test.ts`
+Expected: `5 passed`
 
 - [ ] **Step 9: Verify a real login in the browser**
 
