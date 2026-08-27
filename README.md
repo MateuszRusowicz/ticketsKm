@@ -322,6 +322,7 @@ The `plan/` directory is the real documentation, and it is unusually complete.
 | Start here | |
 |---|---|
 | [`plan/STATUS.md`](plan/STATUS.md) | Where the project stands right now |
+| [`HANDOFF.md`](HANDOFF.md) | Accounts, credentials, operations, and what breaks if nobody knows |
 | [`plan/00-decisions.md`](plan/00-decisions.md) | Every settled decision and why — read before proposing changes |
 | [`plan/README.md`](plan/README.md) | Index of all design documents and plans |
 
