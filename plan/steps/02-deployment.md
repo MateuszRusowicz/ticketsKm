@@ -23,6 +23,14 @@
 - **All infrastructure in the EU.** Vercel `fra1`, Neon `eu-central-1`. Required by [`07-security-and-testing.md`](../07-security-and-testing.md) and by the festival being a Polish entity handling buyer data.
 - **Vercel's Hobby tier forbids commercial use.** Selling tickets requires Pro (~$20/month). You can deploy on Hobby to test, but not to sell.
 - **Commits are made by the human operator.**
+- **`psql` and `pg_dump` are not usable on this machine.** The Debian
+  `pg_wrapper` shim is on `PATH`, so `command -v psql` succeeds, but no
+  `postgresql-client-<version>` package is installed and every invocation fails
+  with "You must install at least one postgresql-client package". Every `psql`
+  step in this plan therefore needs the Prisma equivalent from Task 6 Step 4.
+  **Task 8 Step 3 has no equivalent** — `pg_dump` is genuinely required for the
+  off-platform backup, so install it first:
+  `sudo apt install postgresql-client-16`.
 
 ---
 
@@ -378,13 +386,26 @@ Expected: `clean`.
 
 ```bash
 cd /home/mateusz/Documents/Kodowanie/KM
-DATABASE_URL='<production DIRECT string>' \
-DIRECT_URL='<production DIRECT string>' \
-  pnpm exec tsx scripts/create-admin.ts admin@krzyzowa-music.eu "Administrator" ADMIN
+pnpm exec dotenv -e .env.neon -- \
+  pnpm exec tsx scripts/create-admin.ts mateusz.rusowicz@krzyzowa-music.eu "Mateusz Rusowicz" ADMIN
 ```
 
-Both variables use the **direct** string: this is a one-off CLI run, not the
-application, so there is no reason to go through the pooler.
+`.env.neon` (written in Task 2) already holds both strings, and
+`create-admin.ts` reads `DIRECT_URL ?? DATABASE_URL` — so it goes through the
+direct endpoint on its own. This is a one-off CLI run, not the application, so
+there is no reason to go through the pooler.
+
+**The script prints the generated password to stdout.** If an agent runs it,
+that password lands in the session transcript — the same mistake that put the
+Neon connection strings into a chat log. Either run it yourself, or redirect
+stdout to a file outside the repository:
+
+```bash
+… >> "$SCRATCH/km-production-admin-credentials.txt"
+```
+
+Run it once per person to add further administrators later; the script only
+inserts a row, so there is nothing special about the first account.
 
 - [ ] **Step 2: Record the password immediately**
 
@@ -394,20 +415,50 @@ password manager now. Recovery means creating a second account.
 - [ ] **Step 3: Create the scanner account**
 
 ```bash
-DATABASE_URL='<production DIRECT string>' \
-DIRECT_URL='<production DIRECT string>' \
-  pnpm exec tsx scripts/create-admin.ts skaner@krzyzowa-music.eu "Obsługa wejścia" SCANNER
+pnpm exec dotenv -e .env.neon -- \
+  pnpm exec tsx scripts/create-admin.ts mde@krzyzowa-music.eu "Obsługa wejścia" SCANNER
 ```
 
 - [ ] **Step 4: Verify both, and that no seeded account exists**
 
+`psql` is **not usable on this machine** — the Debian `pg_wrapper` is installed
+but no `postgresql-client-<version>` package is, so every `psql` line in this
+plan fails with "You must install at least one postgresql-client package".
+Verify through Prisma instead, the way Task 2 Step 5 does:
+
 ```bash
-psql '<production DIRECT string>' -c 'SELECT email, role, "failedLoginCount" FROM "AdminUser" ORDER BY email;'
+cat > km-admin-check.mts <<'EOF'
+import { PrismaPg } from '@prisma/adapter-pg'
+import { PrismaClient } from './src/generated/prisma/client.js'
+
+const db = new PrismaClient({
+  adapter: new PrismaPg({
+    connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL!,
+  }),
+})
+
+const admins = await db.adminUser.findMany({
+  select: { email: true, role: true, failedLoginCount: true, createdAt: true },
+  orderBy: { email: 'asc' },
+})
+
+console.log(`AdminUser rows: ${admins.length}`)
+for (const a of admins) {
+  console.log(`  ${a.email}\t${a.role}\tfailed=${a.failedLoginCount}`)
+}
+
+await db.$disconnect()
+EOF
+pnpm exec dotenv -e .env.neon -- tsx km-admin-check.mts
+rm km-admin-check.mts
 ```
 
-Expected: exactly the two accounts you just made. If `admin@krzyzowa-music.eu`
-appears twice, or any account you did not create is listed, the seed reached
-production — delete the extras.
+Expected: exactly the two accounts you just made, and `AdminUser rows: 2`. If
+any account you did not create is listed, the seed reached production — delete
+the extras.
+
+Run this **before** Step 1 as well: it should report `0` on a fresh database,
+which is Task 2 Step 6's invariant.
 
 - [ ] **Step 5: Log in**
 
@@ -416,6 +467,19 @@ Open `https://<domain>/admin/login` and sign in as the ADMIN account.
 Expected: the dashboard renders. Then in DevTools → Application → Cookies,
 confirm `km_session` shows **`HttpOnly`**, **`Secure`**, `SameSite=Lax`,
 `Path=/admin`.
+
+The flags can also be read straight off the login response, which is scriptable
+and does not depend on reading a DevTools panel correctly:
+
+```bash
+curl -si "https://$DOMAIN/admin/login" -X POST \
+  --data-urlencode "email=$EMAIL" --data-urlencode "password=$PASSWORD" \
+  | grep -i '^set-cookie:.*km_session'
+```
+
+Expected: one line containing `HttpOnly`, `Secure`, `SameSite=Lax` and
+`Path=/admin`. Keep the password in a variable read from a file rather than
+typing it inline, so it does not enter shell history.
 
 `Secure` is the one to check carefully: if it is absent, `NODE_ENV` is not
 `production` in the deployment and the session cookie can travel over plain
@@ -536,7 +600,8 @@ Write the rollback steps into the staff runbook, not just this document.
 ## Definition of done
 
 - [ ] Neon project in `eu-central-1` with `production` and `development` branches
-- [ ] Migrations applied to production; all 12 tables present
+- [ ] Migrations applied to production; all 13 tables present (12 application
+      tables plus `_prisma_migrations` — Task 2 Step 4 lists them)
 - [ ] Pooled reads **and** an interactive transaction verified through the adapter
 - [ ] Vercel project on `fra1`, building with `pnpm vercel-build`
 - [ ] Production and Preview env vars set, with different `SESSION_SECRET`s

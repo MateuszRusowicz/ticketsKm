@@ -6,6 +6,10 @@ Design & implementation plan for the ticket sales application hosted at
 **Status:** design in progress. Sections 1–2 reviewed with the product owner;
 sections 3–8 drafted and awaiting review.
 
+**Current state: [STATUS.md](STATUS.md)** — read this first if you are returning
+to the project. To resume in a fresh session, [RESUME.md](RESUME.md) has a
+paste-able prompt.
+
 ## Documents
 
 | # | Document | What it covers |
