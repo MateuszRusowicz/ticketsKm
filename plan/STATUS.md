@@ -5,8 +5,9 @@ of a working session; it is the fastest way back into context.
 
 ## Done
 
-**Plan 01 — Foundations: complete.** All 16 tasks. 106 tests across 18 files,
-green from a clean tree, CI green on GitHub.
+**Plan 01 — Foundations: complete.** All 16 tasks. 114 tests across 19 files,
+green from a clean tree, CI green on GitHub. (106 at the end of Plan 01; the
+extra 8 cover the password reset added in Plan 02, Task 6a.)
 
 The application runs locally in full: `pnpm dev`, then log in at
 `/admin/login` as `admin@krzyzowa-music.eu` / `DevPassword123!` and create a
@@ -23,7 +24,7 @@ capacity that cannot be lowered below tickets already sold.
 
 ## Next
 
-**Plan 02, task 6 is half done.** The two production accounts exist:
+**Plan 02, task 6 — one step left.** The two production accounts exist:
 
 | Email | Role |
 |---|---|
@@ -31,10 +32,19 @@ capacity that cannot be lowered below tickets already sold.
 | `mde@krzyzowa-music.eu` | SCANNER |
 
 Created 25 Aug 2026; `AdminUser` holds exactly these two, nothing seeded.
-Passwords were written to a file outside the repository and must be moved into
-the password manager — they are recoverable nowhere else. Steps 5 and 6 (log in,
-check the session cookie flags, confirm the SCANNER redirect) are **still
-outstanding** and need the deployment URL.
+Session cookie flags verified in production (`HttpOnly`, `Secure`,
+`SameSite=Lax`, `Path=/admin`).
+
+**Outstanding: step 6** — log in as the SCANNER account, open `/admin/events`,
+confirm the redirect to `/admin/scan`.
+
+**The production URL is `https://tickets-km.vercel.app`.** Record it somewhere
+durable; it was very nearly lost with `.env.vercel-values.txt` and had to be
+recovered from old session transcripts.
+
+**Passwords live in `.env.admin-credentials.txt`** (git-ignored, repo root).
+Move them into the password manager and delete the file. If they are lost,
+`pnpm admin:reset-password <email>` — see Task 6a.
 
 **Then tasks 7–8** — both require the owner's accounts:
 

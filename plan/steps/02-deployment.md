@@ -398,11 +398,16 @@ there is no reason to go through the pooler.
 **The script prints the generated password to stdout.** If an agent runs it,
 that password lands in the session transcript — the same mistake that put the
 Neon connection strings into a chat log. Either run it yourself, or redirect
-stdout to a file outside the repository:
+stdout to a git-ignored file **inside the repository**:
 
 ```bash
-… >> "$SCRATCH/km-production-admin-credentials.txt"
+… >> .env.admin-credentials.txt   # covered by the blanket .env* rule
 ```
+
+**Do not redirect it to an agent scratchpad or anywhere under `/tmp`.** That
+was tried on 25 Aug 2026 and the directory was cleared before the passwords
+were moved to the password manager, losing both. Recovering from that needs
+Task 6a below.
 
 Run it once per person to add further administrators later; the script only
 inserts a row, so there is nothing special about the first account.
@@ -410,7 +415,11 @@ inserts a row, so there is nothing special about the first account.
 - [ ] **Step 2: Record the password immediately**
 
 It is printed once and stored only as an argon2 hash. Put it in the festival's
-password manager now. Recovery means creating a second account.
+password manager now, and delete `.env.admin-credentials.txt` once you have.
+
+If it is lost anyway, `pnpm admin:reset-password <email>` sets a new one
+(Task 6a). That is a recovery path, not a reason to be casual — the reset has
+to be run from a machine with the production connection strings.
 
 - [ ] **Step 3: Create the scanner account**
 
@@ -490,6 +499,71 @@ HTTP.
 Log out, log in as the SCANNER account, and open `/admin/events`.
 
 Expected: redirected to `/admin/scan` (which 404s until Plan 06 — correct).
+
+---
+
+## Task 6a: Password recovery
+
+Added after Task 6, when both production passwords were lost to a cleared
+temporary directory and the project turned out to have no way to set a new one
+— `create-admin.ts` only inserts. An admin account whose password is gone was
+unrecoverable, which is a poor position to be in on sale day.
+
+**Files:**
+- Create: `scripts/reset-admin-password.ts`, `tests/scripts/reset-admin-password.test.ts`
+- Modify: `package.json`
+
+- [ ] **Step 1: Reset a password**
+
+```bash
+pnpm admin:reset-password <email>
+```
+
+Against production, supply the connection strings the same way Task 6 does:
+
+```bash
+pnpm exec dotenv -e .env.neon -- \
+  pnpm exec tsx scripts/reset-admin-password.ts <email>
+```
+
+Expected: `Reset <ROLE> <email>` and a new `Password:` line. The same stdout
+warning as Task 6 applies — redirect it to `.env.admin-credentials.txt` rather
+than letting it reach a transcript.
+
+The script does four things, and three of them are the reason it exists rather
+than being a one-line `prisma update`:
+
+- Sets a fresh argon2 hash using the shared `ARGON2_OPTIONS`, so a password set
+  here is indistinguishable from one set through the app.
+- Clears `failedLoginCount` **and** `lockedUntil`. Clearing the counter alone
+  leaves the lockout in place, so the account stays locked with a password the
+  operator has just been told is valid.
+- Deletes that account's `AdminSession` rows. A reset is what you do when a
+  credential may be compromised; leaving live sessions alone would let whoever
+  holds a stolen cookie keep the access the reset was meant to remove.
+- Warns if the account is `active: false`, where the new password cannot log in
+  regardless.
+
+Both writes are in one transaction, so a failure cannot leave the password
+changed with the lockout still standing.
+
+- [ ] **Step 2: Verify**
+
+```bash
+pnpm exec dotenv -e .env.test -- vitest run tests/scripts/reset-admin-password.test.ts
+```
+
+Expected: 8 passing. The suite covers the new password authenticating, the old
+one no longer working, a different password each run, the lockout clearing,
+sessions being revoked, case-insensitive address matching, and clean failures
+for an unknown address and a missing argument.
+
+- [ ] **Step 3: Commit** *(human operator)*
+
+```bash
+git add scripts/reset-admin-password.ts tests/scripts/reset-admin-password.test.ts package.json
+git commit -m "feat: add admin password reset script"
+```
 
 ---
 
@@ -610,6 +684,9 @@ Write the rollback steps into the staff runbook, not just this document.
 - [ ] `/admin` redirects to `/admin/login`
 - [ ] No secret appears in the client bundle
 - [ ] Exactly two admin accounts, neither from the seed
+- [ ] Both passwords are in the password manager, and
+      `.env.admin-credentials.txt` has been deleted
+- [ ] A lost password can be reset — `pnpm admin:reset-password`
 - [ ] Session cookie is `HttpOnly` + `Secure` in production
 - [ ] SCANNER cannot reach `/admin/events` in production
 - [ ] `bilety.krzyzowa-music.eu` resolves and serves with a valid certificate
