@@ -1,4 +1,4 @@
-# Status — 23 August 2026
+# Status — 27 August 2026
 
 Where the project stands, for whoever picks it up next. Update this at the end
 of a working session; it is the fastest way back into context.
@@ -14,17 +14,17 @@ The application runs locally in full: `pnpm dev`, then log in at
 concert with Polish, English and German content, prices in PLN and EUR, and a
 capacity that cannot be lowered below tickets already sold.
 
-**Plan 02 — Deployment: tasks 1–5 done.**
+**Plan 02 — Deployment: tasks 1–6 done, including 6a.**
 
 - Neon project in `eu-central-1`, branches `production` and `development`
-- All 3 migrations applied to production; 13 tables; **0 admin accounts**
+- All 3 migrations applied to production; 13 tables; **2 admin accounts**, neither seeded
 - Pooled reads and interactive transactions verified through `PrismaPg`
 - Vercel project building with `pnpm vercel-build`, functions region `fra1`
 - Deployed successfully — all routes present, all three locales prerendered
 
 ## Next
 
-**Plan 02, task 6 — one step left.** The two production accounts exist:
+**Next up is task 7.** For reference, the two production accounts are:
 
 | Email | Role |
 |---|---|
@@ -33,10 +33,9 @@ capacity that cannot be lowered below tickets already sold.
 
 Created 25 Aug 2026; `AdminUser` holds exactly these two, nothing seeded.
 Session cookie flags verified in production (`HttpOnly`, `Secure`,
-`SameSite=Lax`, `Path=/admin`).
-
-**Outstanding: step 6** — log in as the SCANNER account, open `/admin/events`,
-confirm the redirect to `/admin/scan`.
+`SameSite=Lax`, `Path=/admin`), and the SCANNER account is correctly refused
+`/admin/events` and sent to `/admin/scan` — which 404s, because the scanner
+itself is Plan 07. The redirect is the check; the 404 is expected.
 
 **The production URL is `https://tickets-km.vercel.app`.** Record it somewhere
 durable; it was very nearly lost with `.env.vercel-values.txt` and had to be
@@ -46,7 +45,7 @@ recovered from old session transcripts.
 Move them into the password manager and delete the file. If they are lost,
 `pnpm admin:reset-password <email>` — see Task 6a.
 
-**Then tasks 7–8** — both require the owner's accounts:
+**Tasks 7–8** — both require the owner's accounts:
 
 | Task | What |
 |---|---|

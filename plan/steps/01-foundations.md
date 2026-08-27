@@ -2873,7 +2873,7 @@ an authentication message. Wait a minute and confirm it recovers.
 - [ ] **Step 11: Verify the SCANNER restriction in the browser**
 
 Log in as `skaner@krzyzowa-music.eu` / `DevPassword123!` and navigate to `/admin`.
-Expected: redirected away to `/admin/scan` (which 404s at this stage — that is correct, it arrives in Plan 06).
+Expected: redirected away to `/admin/scan` (which 404s at this stage — that is correct, it arrives in Plan 07).
 
 - [ ] **Step 12: Commit** *(human operator)*
 

@@ -41,7 +41,7 @@ expected result, so progress is verified rather than assumed.
 | 05 — Payments | Phases 4–5 | A real test payment produces a ticket email with a scannable QR |
 | 06 — Money out | Phase 6 | Invitations, promo codes and refunds work without the Stripe dashboard |
 | 07 — Scanner | Phase 7 | Two phones scan one ticket; exactly one shows green |
-| 08 — Launch | Phase 8 | A live transaction succeeds and is refunded |
+| 08 — Launch | Phase 8 | A live transaction succeeds and is refunded. Also the only slot for CSP, shared rate limiting and the RODO retention job |
 
 Plan 02 can run at any point after Plan 01 — nothing later depends on it, so
 deploy when you want a preview URL rather than because the sequence says so.

@@ -43,7 +43,7 @@
 | DNS access for `krzyzowa-music.eu` | the `bilety.` subdomain |
 | Plan 01 complete, pushed, CI green | there is something to deploy |
 
-**Check DNS access now, before anything else.** If the domain is managed inside Wix, confirm you can add a CNAME record. This is the single item with real lead time, and it also blocks Resend's SPF/DKIM records in Plan 04 — see [`../09-open-questions.md`](../09-open-questions.md).
+**Check DNS access now, before anything else.** If the domain is managed inside Wix, confirm you can add a CNAME record. This is the single item with real lead time, and it also blocks Resend's SPF/DKIM records in Plan 05 — see [`../09-open-questions.md`](../09-open-questions.md).
 
 ---
 
@@ -498,7 +498,7 @@ HTTP.
 
 Log out, log in as the SCANNER account, and open `/admin/events`.
 
-Expected: redirected to `/admin/scan` (which 404s until Plan 06 — correct).
+Expected: redirected to `/admin/scan` (which 404s until Plan 07 — correct).
 
 ---
 
@@ -699,11 +699,18 @@ Write the rollback steps into the staff runbook, not just this document.
 
 ## What this plan does not cover
 
-Deliberately deferred, each to the plan that introduces it:
+Deliberately deferred, each to the plan that introduces it. Plan numbers below
+are **executable** plans, per the table in [`../README.md`](../README.md) — not
+the design documents, which use a separate numbering where `07` is security.
 
-- **Stripe keys and webhook endpoint** — Plan 04. The webhook secret differs between test and live mode, and the endpoint must be registered against the production URL.
-- **Resend domain verification (SPF/DKIM/DMARC)** — Plan 04. Needs the same DNS access as Task 7, so confirm that access now.
-- **Vercel Cron for hold expiry and email retries** — Plan 03 and Plan 04, with `CRON_SECRET`.
-- **Rate limiting shared across instances** — Plan 07. The current limiter is per-instance in memory.
-- **Security headers and CSP** — Plan 07.
-- **RODO retention job** — Plan 07.
+- **Stripe keys and webhook endpoint** — Plan 05 (Payments). The webhook secret differs between test and live mode, and the endpoint must be registered against the production URL.
+- **Resend domain verification (SPF/DKIM/DMARC)** — Plan 05 (Payments). Needs the same DNS access as Task 7, so confirm that access now.
+- **Vercel Cron**, with `CRON_SECRET` — hold expiry in Plan 04 (Inventory), email retries in Plan 05 (Payments).
+- **Rate limiting shared across instances** — Plan 08 (Launch). The current limiter is per-instance in memory.
+- **Security headers and CSP** — Plan 08 (Launch).
+- **RODO retention job** — Plan 08 (Launch).
+
+The last three have no plan of their own. They are pre-launch hardening drawn
+from [`../07-security-and-testing.md`](../07-security-and-testing.md), and Plan
+08 is the only slot before tickets go on sale — so they are listed in its
+acceptance criteria rather than left to be remembered.
