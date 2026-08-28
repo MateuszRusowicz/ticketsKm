@@ -24,7 +24,9 @@ capacity that cannot be lowered below tickets already sold.
 
 ## Next
 
-**Next up is task 7.** For reference, the two production accounts are:
+**Next up is writing and executing Plan 03 (public programme).** Plan 02's
+remaining tasks are all deferred to launch. For reference, the two production
+accounts are:
 
 | Email | Role |
 |---|---|
@@ -54,16 +56,30 @@ migrations and the two real admin accounts.
 Do not seed admin accounts even on `development` — the seed password is public
 and the site is on a public URL. Use `pnpm admin:create`.
 
-**Tasks 7–8** — both require the owner's accounts:
+| Task | What | When |
+|---|---|---|
+| 7 | Point `bilety.krzyzowa-music.eu` at Vercel via CNAME. | **Deferred to launch** — decided 27 Aug 2026 to stay on `tickets-km.vercel.app` until the app is tested and the team agrees. Confirm *who controls DNS* now regardless; Plan 05 needs the same access for Resend. |
+| 8 | Verify a Neon point-in-time restore by performing one; take an off-platform `pg_dump`; add uptime monitoring. | Restore drill worth rehearsing now; dump at cutover. Needs `sudo apt install postgresql-client-16`. |
+| 9 | Cut over to the real database and connect the domain. | **Last**, once the app is finished. |
 
-| Task | What |
-|---|---|
-| 7 | Point `bilety.krzyzowa-music.eu` at Vercel via CNAME, then set `NEXT_PUBLIC_SITE_URL` and redeploy (it is baked in at build time). |
-| 8 | Verify a Neon point-in-time restore by actually performing one; take an off-platform `pg_dump`; add uptime monitoring. |
-| 9 | **Last.** Cut over to the real database once the app is finished — switch the two Vercel Production variables, redeploy, re-verify. |
+**Three product decisions settled 27 Aug 2026** (see
+[`00-decisions.md`](00-decisions.md)):
 
-Then **Plan 03 — public programme**, which has not been written yet. Write it
-with the `writing-plans` skill, following the format of `steps/01-foundations.md`.
+- **One concert per order.** No cart. A buyer attending three concerts pays
+  three times.
+- **A name per ticket**, against the plan's own recommendation of anonymous
+  tickets. Lengthens checkout and puts personal data on every `Ticket`, which
+  widens the RODO retention job.
+- **Stay on `tickets-km.vercel.app`** until launch.
+
+**[Plan 03 — public programme](steps/03-public-programme.md) is written**
+(27 Aug 2026) and ready to execute: 9 tasks, from public event queries through
+to the validated checkout form. It does **not** depend on Plan 02 — it can be
+built and tested entirely locally.
+
+Worth a critique pass by a subagent before executing. That pass caught three
+blockers in Plan 01, including a route-group conflict that would have failed the
+build at the very last task.
 
 ## Loose ends
 

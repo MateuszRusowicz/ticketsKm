@@ -18,7 +18,8 @@ sells out while another is still in the cart.
 - **Multi-concert cart.** One payment, one email, all tickets. Better for the
   buyer and reduces Stripe fees per transaction. Adds roughly a week.
 
-**Needed before:** phase 2. *Not yet decided.*
+**Needed before:** phase 2. **Decided 27 Aug 2026: single-concert orders.**
+No cart. See [00-decisions.md](00-decisions.md).
 
 ### 2. DNS control for `krzyzowa-music.eu`
 
@@ -26,7 +27,13 @@ Needed for the `bilety.` subdomain **and** for Resend's SPF/DKIM/DMARC records.
 If DNS is managed inside Wix, confirm what records can be added there. Ticket
 emails landing in spam is a project-ending failure and this has lead time.
 
-**Needed before:** phase 5 (email) and phase 8 (launch). Check now.
+**Needed before:** phase 5 (email) and phase 8 (launch).
+
+**Decided 27 Aug 2026:** the app stays on `tickets-km.vercel.app` for the whole
+build. The festival subdomain is connected only once the app is tested and the
+team agrees — so Plan 02 Task 7 is deferred rather than done next. DNS access
+still has to be confirmed before Plan 05, because Resend's SPF/DKIM records need
+it and that is the item with the longest lead time.
 
 ### 3. Stripe account and Klarna availability
 
@@ -44,8 +51,13 @@ Currently the design issues N anonymous tickets to one buyer. The alternative is
 collecting a name per ticket, which enables name-checking at the door and
 reduces resale, at the cost of a longer checkout form.
 
-**Needed before:** phase 2. Recommendation: anonymous tickets. The QR is the
-control, and the friction of naming four attendees loses sales.
+**Needed before:** phase 2. Recommendation was anonymous tickets.
+
+**Decided 27 Aug 2026: a name per ticket**, against that recommendation. The
+checkout form collects one name per admission. Consequences to carry forward:
+a longer form, per-ticket validation, personal data on every `Ticket` rather
+than only on the `Order` — which widens the RODO retention job — and the door
+scanner can show a name to check against.
 
 ---
 

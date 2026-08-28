@@ -36,7 +36,7 @@ expected result, so progress is verified rather than assumed.
 |---|---|---|
 | [01 — Foundations](steps/01-foundations.md) ✅ | Phases 0–1 | An admin logs in and creates a concert in three languages |
 | [02 — Deployment](steps/02-deployment.md) | Phase 0 infra | The app runs at `bilety.krzyzowa-music.eu` with a verified backup |
-| 03 — Public programme | Phase 2 | A visitor browses in 3 languages and reaches a validated form |
+| [03 — Public programme](steps/03-public-programme.md) | Phase 2 | A visitor browses in 3 languages and reaches a validated form |
 | 04 — Inventory | Phase 3 | Concurrency tests prove the system cannot oversell |
 | 05 — Payments | Phases 4–5 | A real test payment produces a ticket email with a scannable QR |
 | 06 — Money out | Phase 6 | Invitations, promo codes and refunds work without the Stripe dashboard |

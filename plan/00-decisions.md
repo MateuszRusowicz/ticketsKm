@@ -10,10 +10,11 @@ Each row records what was decided and why, so nobody re-litigates it in month tw
 | Catalogue | **Full program — many concerts** | ~10 concerts, each with its own date, venue, capacity and price. |
 | Ticket types | **One price per concert** | Modelled as a `TicketType` table with exactly one row per event, so a reduced price can be added later without a migration. |
 | Buyer accounts | **Guest checkout only** | Sales happen once a year. Accounts would add registration, login, password reset, session security and a GDPR liability for zero benefit. |
-| Multi-concert cart | **Open question** — see [09](09-open-questions.md) | The schema supports it; the UI cost is real. |
+| Multi-concert cart | **No — one concert per order** (27 Aug 2026) | The schema supports it, but the UI cost is roughly a week: persistent cart, cart page, cross-event availability at payment time, and partial-failure handling when one concert sells out mid-checkout. A buyer attending three concerts pays three times. |
 | Free tickets | **Staff invitations + 100% promo codes** | Two distinct flows, both bypassing Stripe. |
 | Refunds | **In-app, full and partial** | Staff must not have to use the Stripe dashboard for routine work. |
 | Invoices | **Invoice on request — details captured only** | The app stores company name / NIP / address and exports them. It does not generate faktury; that stays with accounting. |
+| Attendee names | **A name per ticket** (27 Aug 2026) | Decided against the plan's own recommendation of anonymous tickets. Enables name-checking at the door and discourages resale, at the cost of a longer checkout form and personal data on every ticket rather than just on the order — which widens the RODO retention job in Plan 08. `Ticket.holderName` already exists in the schema. |
 | Check-in | **Browser-based QR scanner on staff phones** | No app install, no dedicated hardware, replaces the current Wix scanner with something we control. |
 | Event admin | **Full CRUD in the app** | Programs and times shift. Every change must not become a developer task. |
 

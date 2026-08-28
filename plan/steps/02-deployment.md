@@ -577,6 +577,18 @@ git commit -m "feat: add admin password reset script"
 
 ## Task 7: Connect the subdomain
 
+> **Deferred — do this at launch, not now.** Decided 27 Aug 2026: the app stays
+> on `tickets-km.vercel.app` for the whole build. The festival subdomain is
+> connected only once the app has been tested and the team agrees to go live.
+> That puts this task alongside Task 9 (database cutover) at the end, not next.
+>
+> **One thing still has lead time.** Confirm *who controls DNS* now, even though
+> you will not change it for months — Resend's SPF/DKIM records in Plan 05 need
+> the same access, and finding out that nobody can add records is the kind of
+> discovery that should not happen in the final week. `dig NS krzyzowa-music.eu`
+> names the DNS host in one command.
+
+
 - [ ] **Step 1: Add the domain in Vercel**
 
 Settings → Domains → Add `bilety.krzyzowa-music.eu`. Vercel will show the DNS
@@ -691,6 +703,11 @@ then every environment runs on Neon `development` — see Global Constraints.
 
 The cutover is deliberately one small, reversible change: the Vercel Production
 connection strings. Nothing in the code knows which database it is talking to.
+
+- [ ] **Step 0: Connect the domain**
+
+Task 7 is deferred to this point. Do it now, before switching the database, so
+that the certificate has propagated by the time real data is behind it.
 
 - [ ] **Step 1: Apply any new migrations to production**
 
