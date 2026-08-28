@@ -23,7 +23,7 @@ beforeAll(async () => {
 describe('seed', () => {
   it('is idempotent', async () => {
     expect(await db.venue.count()).toBe(2)
-    expect(await db.event.count()).toBe(3)
+    expect(await db.event.count()).toBe(10)
     expect(await db.adminUser.count()).toBe(2)
   })
 

@@ -32,6 +32,27 @@ dependency — this is built and tested entirely locally.
 
 ---
 
+## Findings log
+
+Appended **as things are discovered**, not at the end. Each entry says what the
+plan assumed, what was actually true, and which step was corrected. If you learn
+something here that outlives this plan, also add it to the traps list in
+`/CLAUDE.md` — that file is loaded automatically every session; this one is not.
+
+| Date | Finding | Action |
+|---|---|---|
+| 27 Aug | Critique pass: the test setup cannot render components — `vitest.config.mts` is `environment: 'node'`, `include: ['tests/**/*.test.ts']`, no jsdom or `@testing-library/react`. | Tasks 5–7 rewritten to test pure functions in `src/lib/shared/`. Added to CLAUDE.md traps. |
+| 27 Aug | Critique pass: `eslint.config.mjs` bans `@/lib/server/*` from `src/components/**` with no `allowTypeImports` escape. | `PublicEvent` moved to `src/lib/shared/public-event.ts`. Added to CLAUDE.md traps. |
+| 27 Aug | Critique pass: `react-hook-form` and `@hookform/resolvers` were never installed. | Added Task 0 Step 1. |
+| 27 Aug | Critique pass: currency cookie read server-side contradicts the plan's own prerender assertion. | Shop declared dynamic; Task 12 Step 4 updated; `STATUS.md` must change too. |
+| 27 Aug | Critique pass: checkout field names (`buyerName`, `wantsInvoice`, `address`) do not match `Order` (`firstName`, `lastName`, `needsInvoice`, `invoiceAddress`). | Task 9 Step 2 corrected before Plan 04 inherits the mismatch. |
+| 27 Aug | Critique pass: prices/`maxPerOrder`/`soldCount`/`heldCount` are on `TicketType`, capacity on `Event`; `TicketType.active` was ignored entirely. | Task 2 corrected. Added to CLAUDE.md traps. |
+| 27 Aug | Critique pass: no past-date filter and `CLOSED` unhandled — concerts would stay listed and purchasable forever. | Added both to Task 2's filter table. |
+| 27 Aug | Task 0: `pnpm db:reset` is refused by Prisma 7 without `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`, even against local Postgres. | Task 0 Step 3 switched to `pnpm db:seed` twice. Added to CLAUDE.md traps. |
+| 27 Aug | Task 0: every seeded concert was dated August 2026 — already past, so the programme would render empty the moment the past-date filter landed. | Seed dates made relative to seed time; upsert refreshes them. |
+
+---
+
 ## Global Constraints
 
 - **One concert per order.** Decided 27 Aug 2026. No cart, no cross-event
@@ -118,11 +139,22 @@ Move the three existing concerts to future dates too, or the programme is empty
 the moment Task 2's past-date filter lands.
 
 ```bash
-pnpm db:reset && pnpm db:seed
+pnpm db:seed && pnpm db:seed
 ```
 
-Expected: the seed runs twice cleanly (it is idempotent) and
-`tests/prisma/seed.test.ts` still passes — **update its expected counts**.
+Expected: `Seeded 2 venues, 10 concerts, 2 admin accounts.` both times — the
+seed upserts, so a second run changes no counts. Then update
+`tests/prisma/seed.test.ts`, which asserts `event.count() === 3`.
+
+**Seeding is enough; do not reach for `pnpm db:reset`.** Prisma 7 refuses
+`migrate reset` without consent passed through
+`PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`, even against a local database,
+and the upsert path achieves the same result without dropping anything.
+
+**Make the dates relative to seed time**, not literal. The original seed
+hardcoded August 2026 and every concert was already in the past by the time this
+plan started — which is precisely the failure the past-date filter would then
+have exposed as an empty programme.
 
 ---
 

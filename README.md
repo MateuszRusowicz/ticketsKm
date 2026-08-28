@@ -29,7 +29,8 @@ being precise about what that does and does not mean.
 **Not built yet:**
 
 - **The public shop.** `/[locale]` currently renders a heading and nothing else.
-  Browsing concerts, the cart and checkout are Plan 03.
+  Browsing concerts and the checkout form are Plan 03. There is no cart —
+  one concert per order, decided 27 Aug 2026.
 - **Payments.** No Stripe integration. Plan 05.
 - **Email and PDF tickets.** Plan 05.
 - **The door scanner.** Plan 07.
@@ -62,7 +63,7 @@ Create the schema and some sample data:
 
 ```bash
 pnpm db:migrate                    # applies migrations to km_dev
-pnpm db:seed                       # two venues, three concerts, two accounts
+pnpm db:seed                       # 2 venues, 10 concerts, 2 accounts; upserts, safe to re-run
 pnpm dev
 ```
 
@@ -323,6 +324,7 @@ The `plan/` directory is the real documentation, and it is unusually complete.
 |---|---|
 | [`plan/STATUS.md`](plan/STATUS.md) | Where the project stands right now |
 | [`HANDOFF.md`](HANDOFF.md) | Accounts, credentials, operations, and what breaks if nobody knows |
+| [`CLAUDE.md`](CLAUDE.md) | Operating rules and the trap list, loaded automatically by Claude Code |
 | [`plan/00-decisions.md`](plan/00-decisions.md) | Every settled decision and why — read before proposing changes |
 | [`plan/README.md`](plan/README.md) | Index of all design documents and plans |
 

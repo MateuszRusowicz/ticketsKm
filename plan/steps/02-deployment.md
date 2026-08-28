@@ -15,6 +15,24 @@
 
 ---
 
+## Findings log
+
+Appended as things are discovered, not at the end. Anything that outlives this
+plan also goes in the traps list in `/CLAUDE.md`, which loads automatically
+every session.
+
+| Date | Finding | Action |
+|---|---|---|
+| 25 Aug | `psql` appears installed (`pg_wrapper` shim on `PATH`) but no client package is present; every invocation fails. | Task 6 Step 4 rewritten to query through Prisma. `pg_dump` in Task 8 has no substitute. |
+| 25 Aug | Admin passwords written to an agent scratchpad were destroyed when the directory was cleared, before reaching the password manager. | Task 6 Step 1 now says a git-ignored file **inside the repo**, never `/tmp`. Added Task 6a (password reset), which did not exist. |
+| 25 Aug | `create-admin.ts` only inserts — a lost password was unrecoverable. | Task 6a added: `scripts/reset-admin-password.ts`, 8 tests. |
+| 27 Aug | Plan numbers had drifted: design docs and executable plans number differently, and the scanner was cited as "Plan 06" in two files. | Corrected; the deferred list now states which scheme it uses. |
+| 27 Aug | CSP, shared rate limiting and the RODO job were deferred to "Plan 07" — the Scanner — so nobody would have picked them up. | Reassigned to Plan 08 and added to its row in `../README.md`. |
+| 27 Aug | Vercel moved the production branch setting out of Settings → Git. | It is Settings → Environments → Production → Branch Tracking. Recorded in `HANDOFF.md`. |
+| 27 Aug | Definition of done said "all 12 tables"; there are 12 application tables plus `_prisma_migrations`. | Corrected. |
+
+---
+
 ## Global Constraints
 
 - **Never run `pnpm db:seed` against production.** The seed creates two accounts with the password `DevPassword123!`. Production admins come from `pnpm admin:create` only.

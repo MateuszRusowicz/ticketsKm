@@ -49,6 +49,15 @@ deploy when you want a preview URL rather than because the sequence says so.
 Plans 02–07 are written just before each is executed, so they reflect the code
 that actually exists rather than the code that was imagined eight weeks earlier.
 
+**Every executable plan carries a Findings log** near the top. When reality
+contradicts the plan, the entry is appended and the affected step corrected **in
+the same sitting** — not at the end of the task, and not "later". A plan that is
+quietly wrong is worse than no plan, because someone will follow it.
+
+Anything that outlives a single plan also belongs in the traps list in
+[`/CLAUDE.md`](../CLAUDE.md), which is loaded automatically at the start of
+every session. `plan/STATUS.md` is only read when someone remembers to.
+
 [plan.md](plan.md) is the original Polish sketch that started this. It is kept for
 reference; where it disagrees with these documents, these documents win. The
 notable divergences are listed in [00-decisions.md](00-decisions.md).
