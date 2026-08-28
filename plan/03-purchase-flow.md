@@ -102,16 +102,40 @@ standing at the door of a full room holding a ticket the system sold them.
 ```ts
 // validated with zod — src/lib/shared/schemas.ts
 {
+  // Exactly one element. One concert per order was decided 27 Aug 2026;
+  // the array shape is kept because the schema supports multi-item orders
+  // and a future reversal should not need a migration.
   items: [{ ticketTypeId: string, quantity: number }],
   email: string,
   firstName: string, lastName: string,
+  phone?: string,
+  // One name per admission. Length MUST equal items[0].quantity.
+  attendeeNames: string[],
   locale: 'pl' | 'en' | 'de',
   currency: 'PLN' | 'EUR',
   promoCode?: string,
-  invoice?: { companyName: string, nip: string, address: string },
+  invoice?: { companyName: string, nip: string, invoiceAddress: string },
   acceptedTerms: true,
 }
 ```
+
+**`attendeeNames` was added 27 Aug 2026**, when the festival chose a name per
+ticket over anonymous admission. The invariant that follows:
+
+> **Every `Ticket` belonging to a `PURCHASE` order has a non-null `holderName`.
+> For an `INVITATION` order it stays optional.**
+
+That asymmetry is why `Ticket.holderName` remains nullable in the schema —
+invitations reuse the same fulfilment path and have no checkout form to collect
+names from. Enforce the rule in the checkout validator, not in the column.
+
+Names are trimmed and length-capped on the way in. They land in a fixed-width
+`pdf-lib` layout (see [`06-i18n-email-pdf.md`](06-i18n-email-pdf.md)) and must
+survive latin-ext characters, so a 200-character name is a rendering bug waiting
+to happen rather than a harmless input.
+
+Note `invoiceAddress`, not `address` — the field names here match the `Order`
+columns they populate, so no mapping layer is needed.
 
 Server-side, in order:
 

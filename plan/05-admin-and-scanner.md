@@ -94,11 +94,27 @@ staff can work without reading carefully in the dark:
 
 | State | Colour | Meaning |
 |---|---|---|
-| `VALID` | green | Admitted. The ticket is now used. |
-| `ALREADY_USED` | amber | Shows when and by which staff member. Possible duplicate or a genuine re-entry. |
+| `VALID` | green | Admitted. The ticket is now used. **Shows the holder's name.** |
+| `ALREADY_USED` | amber | Shows when, by which staff member, and the holder's name. Possible duplicate or a genuine re-entry. |
 | `REVOKED` | red | Refunded or cancelled. |
 | `WRONG_EVENT` | red | A valid ticket, but for a different concert. Shows which one. |
 | `NOT_FOUND` | red | No such ticket. |
+
+**The holder's name is shown on `VALID` and `ALREADY_USED`** — added 27 Aug 2026
+alongside the decision to put a name on every ticket. Being able to check the
+name against the person standing there is the entire justification for that
+decision, so a scanner that does not display it makes the added checkout friction
+buy nothing.
+
+Two constraints on how it is shown. It must stay **secondary to the colour** —
+staff work fast in the dark and the green/red judgement has to survive being
+read at a glance, so the name is a subtitle, never the headline. And it is
+**advisory, not a gate**: the QR remains the control. Staff decide what to do
+about a mismatch; the scanner must not refuse entry on a name that does not
+match, because buyers routinely pass tickets to family with different surnames.
+
+On an invitation, `holderName` may be null — show the order reference instead of
+an empty space.
 
 **First scan wins, atomically.** Two staff members scanning the same code
 simultaneously must not both see green:

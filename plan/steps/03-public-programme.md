@@ -49,6 +49,9 @@ something here that outlives this plan, also add it to the traps list in
 | 27 Aug | Critique pass: prices/`maxPerOrder`/`soldCount`/`heldCount` are on `TicketType`, capacity on `Event`; `TicketType.active` was ignored entirely. | Task 2 corrected. Added to CLAUDE.md traps. |
 | 27 Aug | Critique pass: no past-date filter and `CLOSED` unhandled — concerts would stay listed and purchasable forever. | Added both to Task 2's filter table. |
 | 27 Aug | Task 0: `pnpm db:reset` is refused by Prisma 7 without `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`, even against local Postgres. | Task 0 Step 3 switched to `pnpm db:seed` twice. Added to CLAUDE.md traps. |
+| 27 Aug | Task 1: `01-architecture.md`'s route tree predated the route groups — it showed `app/[locale]/` and `app/admin/` rather than `(shop)`/`(admin)`, i.e. it was wrong about the two root layouts as well as the checkout path. | Both corrected, with a dated note explaining why. |
+| 27 Aug | Task 1: `07-security-and-testing.md` listed personal data as buyer-only. With named tickets the festival now processes data of people who never visited the site, and the retention job — written against `Order` columns — would have left every attendee name in the database indefinitely. | Rewritten as a two-table inventory; two new checklist items. |
+| 27 Aug | Task 1: `pdf-lib`'s standard fonts do not carry latin-ext, and the holder name is now always printed. | `06-i18n-email-pdf.md` gained a layout rule: trim, cap, ellipsis, embedded latin-ext font. |
 | 27 Aug | Task 0: every seeded concert was dated August 2026 — already past, so the programme would render empty the moment the past-date filter landed. | Seed dates made relative to seed time; upsert refreshes them. |
 
 ---

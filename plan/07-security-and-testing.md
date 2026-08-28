@@ -67,8 +67,21 @@ Ranked by severity. Everything else in this document is secondary to these.
 
 ## RODO / GDPR
 
-The buyer data held is: email, first and last name, optional phone, optional
-company/NIP/address, purchase history and IP at checkout time.
+Personal data is held in **two places**, and it is easy to remember only the
+first:
+
+| Where | What |
+|---|---|
+| `Order` — the **buyer** | email, first and last name, optional phone, optional company/NIP/address, purchase history, IP at checkout time |
+| `Ticket.holderName` — the **attendee** | a name per admission, since 27 Aug 2026 |
+
+The second is the consequence of choosing named tickets over anonymous ones, and
+it changes the shape of the obligation: the festival now processes the personal
+data of people who **never visited the site and never agreed to anything**. A
+buyer naming three family members supplies three third parties' data.
+
+Two things follow. The privacy policy must say so — a policy written only about
+buyers does not cover attendees. And the retention job must reach both tables.
 
 - [ ] Privacy policy (`polityka prywatności`) and terms of sale (`regulamin`)
       published — **both are legally required for online sales in Poland**, and
@@ -77,6 +90,11 @@ company/NIP/address, purchase history and IP at checkout time.
 - [ ] All infrastructure in EU regions (Vercel `fra1`, Neon Frankfurt)
 - [ ] Retention job: anonymise buyer PII on orders a defined period after the
       last concert of an edition, keeping financial and attendance records
+- [ ] **The same job must anonymise `Ticket.holderName`.** It is not on an
+      `Order`, so a job written against order columns alone silently leaves every
+      attendee name in the database indefinitely. Keep the ticket row — it is an
+      attendance record — and null the name.
+- [ ] Privacy policy explicitly covers **attendees, not only buyers**
 - [ ] A documented procedure for access and deletion requests
 - [ ] No analytics cookies — which avoids a consent banner entirely. If
       analytics are wanted later, use a cookieless product rather than adding

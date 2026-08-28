@@ -80,11 +80,22 @@ One page per ticket, all tickets for an order in a single PDF:
 
 - Festival logo and the concert title in the buyer's language
 - Date, time (Europe/Warsaw), venue name and address
-- Ticket type and, when supplied, the holder's name
+- Ticket type and **the holder's name** — always present on a purchased
+  ticket since the 27 Aug 2026 decision, optional only on invitations
 - **The QR code**, large and high-contrast, generated as a PNG and embedded
 - Order reference and ticket code in text, for manual entry when a QR will not
   scan
 - A short terms line and the festival's contact address
+
+**The holder's name needs a layout rule, not just a field.** It is buyer-supplied
+free text dropped into a fixed-width page, so it must be trimmed and
+length-capped at the checkout validator (see
+[`03-purchase-flow.md`](03-purchase-flow.md)), and truncated with an ellipsis
+rather than allowed to overflow or wrap into the QR's quiet zone. It must render
+Polish and German diacritics — the embedded font has to carry latin-ext, which
+`pdf-lib`'s standard fonts do **not**. A name like `Małgorzata Świętosławska`
+that renders as mojibake on a door ticket is worse than no name at all, because
+staff will trust it.
 
 Design constraints that come from how this is actually used: the QR must survive
 being printed on a home inkjet **and** being displayed on a cracked phone screen

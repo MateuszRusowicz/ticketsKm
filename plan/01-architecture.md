@@ -9,17 +9,29 @@ The application lives at the **repository root**. The empty `KMFront/` and
 `KMBack/` directories are removed — they contradict the monolith decision.
 
 ```
+> **Two corrections, 27 Aug 2026.** The tree originally showed `app/[locale]/`
+> and `app/admin/` without route groups; the real structure uses `(shop)` and
+> `(admin)`, which are **two separate root layouts** because the shop needs
+> `<html lang={locale}>` and the admin needs `<html lang="pl">`. Route groups
+> vanish from URLs but remain in import paths.
+>
+> The checkout form also moved from `[locale]/checkout/` to
+> `[locale]/koncert/[slug]/zamowienie/`. With one concert per order (decided the
+> same day) the form belongs under the concert it is buying, and the slug is what
+> tells the server which ticket type to validate against.
+
 KM/
 ├─ src/
 │  ├─ app/
-│  │  ├─ [locale]/                    # pl | en | de
+│  │  ├─ (shop)/[locale]/             # pl | en | de — route group, own root layout
 │  │  │  ├─ page.tsx                  # program — list of concerts
 │  │  │  ├─ koncert/[slug]/page.tsx   # one concert + buy box
-│  │  │  ├─ checkout/page.tsx         # Stripe Payment Element
+│  │  │  ├─ koncert/[slug]/zamowienie/page.tsx   # buyer details form
 │  │  │  ├─ order/[reference]/page.tsx# order status / confirmation
+│  │  │  ├─ not-found.tsx             # localised 404
 │  │  │  └─ regulamin/, prywatnosc/   # terms + privacy (legally required in PL)
 │  │  ├─ t/[code]/page.tsx            # web ticket (the "link" half of delivery)
-│  │  ├─ admin/                       # auth-gated, Polish only, own layout
+│  │  ├─ (admin)/admin/               # auth-gated, Polish only, own root layout
 │  │  │  ├─ login/
 │  │  │  ├─ events/                   # CRUD + translations + prices
 │  │  │  ├─ orders/                   # search, view, refund, resend

@@ -4950,13 +4950,38 @@ Two schema additions were made in this plan that are not yet in [`02-data-model.
 4. **Two root layouts via route groups** — `(shop)` and `(admin)` — because the shop needs `<html lang={locale}>` and the admin needs `<html lang="pl">`. Plan 04's `/t/[code]` page needs a third, `(ticket)`.
 5. **`updateEvent` refuses price changes while `heldCount > 0`.** Plan 03 should confirm this interacts correctly with the atomic hold path.
 
-Also worth deciding before Plan 03, raised during review:
+> **Numbering warning, added 27 Aug 2026.** The plan numbers in this section
+> were written under an earlier scheme and are **off by one**. Read them against
+> the executable-plan table in [`../README.md`](../README.md):
+>
+> | Written here | Actually means |
+> |---|---|
+> | "Plan 03" | **Plan 04 — Inventory** (holds, `heldCount`, order creation) |
+> | "Plan 04" | **Plan 05 — Payments** (Stripe, `/t/[code]`, PDF, email) |
+> | "What Plan 02 picks up" | **Plan 03 — Public programme** |
+>
+> So items 4 and 5 above, the `Order.reference` regex and the ticket-code
+> alphabet are **not** Plan 03's work. Plan 03 creates no `Order` and no hold.
+
+Also worth deciding before the inventory plan (**Plan 04**), raised during
+review:
 
 - **Hold duration by venue size.** 30 minutes across the board means 300 people can be mid-checkout on a 300-seat concert while everyone else sees "sold out". Consider a shorter window for the smaller venues.
-- **`Order.reference` has no format constraint** — only `@unique`. Add a regex check when Plan 03 writes the generator, and never accept a reference from a form.
+- **`Order.reference` has no format constraint** — only `@unique`. Add a regex check when **Plan 04** writes the generator, and never accept a reference from a form.
 - **Ticket codes should use Crockford base32** (no O/0/I/L), since the scanner also offers manual entry.
 - **`experimental.serverActions.allowedOrigins`** must be set once the production domain is known.
 
-## What Plan 02 picks up
+## What the next plan picks up
 
-The public programme listing, concert detail pages, the currency and locale switchers, availability display, and the buyer details form — everything up to but not including the creation of an order. Inventory holds are Plan 03.
+*(Written as "Plan 02" before the renumbering — this describes **Plan 03**, the
+public programme. See the warning above.)*
+
+The public programme listing, concert detail pages, the currency and locale
+switchers, availability display, and the buyer details form — everything up to
+but not including the creation of an order. **Inventory holds are Plan 04.**
+
+**Still open and blocking Plan 04:** hold duration by venue size. A flat 30
+minutes means 300 people can hold every seat of a 300-seat concert while
+everyone else sees "sold out", and an abandoned checkout keeps its seat for the
+full window. Tracked in [`../09-open-questions.md`](../09-open-questions.md);
+Plan 04 cannot be written without an answer.
