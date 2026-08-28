@@ -77,9 +77,19 @@ and the site is on a public URL. Use `pnpm admin:create`.
 to the validated checkout form. It does **not** depend on Plan 02 — it can be
 built and tested entirely locally.
 
-Worth a critique pass by a subagent before executing. That pass caught three
-blockers in Plan 01, including a route-group conflict that would have failed the
-build at the very last task.
+**Critiqued and revised the same day.** Two independent passes found two
+blockers, one internal contradiction and a schema mismatch; the plan was
+rewritten from 9 tasks to 13 and now opens with a Task 0 that installs
+`react-hook-form` and extends the seed. Findings worth remembering:
+
+- **The test setup cannot render components** — `vitest.config.mts` is
+  `environment: 'node'` with `include: ['tests/**/*.test.ts']`, and there is no
+  jsdom or `@testing-library/react`. The plan now tests pure functions instead.
+- **`eslint.config.mjs` bans `@/lib/server/*` from `src/components/**`** with no
+  `allowTypeImports` escape, so shared types must live in `src/lib/shared/`.
+- **The shop stops being statically prerendered** once it queries availability
+  and reads a currency cookie. That is correct for a ticketing site, but it
+  changes the Plan 02 result recorded above.
 
 ## Loose ends
 
