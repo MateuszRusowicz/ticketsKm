@@ -45,20 +45,32 @@ recovered from old session transcripts.
 Move them into the password manager and delete the file. If they are lost,
 `pnpm admin:reset-password <email>` — see Task 6a.
 
+**Decided 27 Aug 2026: the app is built entirely against the Neon
+`development` branch.** Vercel Production moves to the development connection
+strings, dummy data is seeded there, and the real database is connected once at
+the end by the new Plan 02 **Task 9**. Neon `production` stays dormant with its
+migrations and the two real admin accounts.
+
+Do not seed admin accounts even on `development` — the seed password is public
+and the site is on a public URL. Use `pnpm admin:create`.
+
 **Tasks 7–8** — both require the owner's accounts:
 
 | Task | What |
 |---|---|
 | 7 | Point `bilety.krzyzowa-music.eu` at Vercel via CNAME, then set `NEXT_PUBLIC_SITE_URL` and redeploy (it is baked in at build time). |
 | 8 | Verify a Neon point-in-time restore by actually performing one; take an off-platform `pg_dump`; add uptime monitoring. |
+| 9 | **Last.** Cut over to the real database once the app is finished — switch the two Vercel Production variables, redeploy, re-verify. |
 
 Then **Plan 03 — public programme**, which has not been written yet. Write it
 with the `writing-plans` skill, following the format of `steps/01-foundations.md`.
 
 ## Loose ends
 
-- **Branch `feat/plan-01-foundations` has never been merged.** Everything is on
-  it. Decide whether `main` becomes the default and merge.
+- **Branching is set up (27 Aug 2026):** `main` is production and is what Vercel
+  Production tracks; `development` integrates finished features; feature
+  branches are work in progress. `feat/plan-01-foundations` is now redundant and
+  can be deleted locally and on the remote.
 - **Rotate the Neon password.** The connection strings were pasted into a chat
   transcript. Neon → Roles → Reset password, then update the Vercel variables.
 - **`.env.vercel-values.txt` is deleted.** Done 25 Aug 2026. Note that it was

@@ -23,6 +23,14 @@
 - **All infrastructure in the EU.** Vercel `fra1`, Neon `eu-central-1`. Required by [`07-security-and-testing.md`](../07-security-and-testing.md) and by the festival being a Polish entity handling buyer data.
 - **Vercel's Hobby tier forbids commercial use.** Selling tickets requires Pro (~$20/month). You can deploy on Hobby to test, but not to sell.
 - **Commits are made by the human operator.**
+- **Until launch, every environment runs on the Neon `development` branch.**
+  Decided 27 Aug 2026: the whole app is built and tested against dummy data, and
+  the real database is connected once at the end (Task 9). Neon `production`
+  keeps the three applied migrations and the two real admin accounts from Task
+  6, dormant, until then.
+- **Do not seed admin accounts, even on `development`.** The seed's
+  `DevPassword123!` is published in this repository, and `tickets-km.vercel.app`
+  is a public URL. Seed content; create accounts with `pnpm admin:create`.
 - **`psql` and `pg_dump` are not usable on this machine.** The Debian
   `pg_wrapper` shim is on `PATH`, so `command -v psql` succeeds, but no
   `postgresql-client-<version>` package is installed and every invocation fails
@@ -616,6 +624,11 @@ Repeat Task 5 steps 3–5 against `bilety.krzyzowa-music.eu`.
 The part that gets skipped, and the part you need at 20:00 on the evening
 tickets go on sale.
 
+Worth doing **now** as a rehearsal, even though production holds no real data
+yet — the point of a restore drill is that the first attempt is not during an
+incident. The dump in Step 3 only becomes meaningful at cutover (Task 9), so
+repeat it then.
+
 - [ ] **Step 1: Confirm Neon's retention window**
 
 Neon dashboard → Branches → Restore. Note the history window your plan
@@ -671,6 +684,69 @@ Write the rollback steps into the staff runbook, not just this document.
 
 ---
 
+## Task 9: Cut over to the production database
+
+**Do this last**, when the app is finished and tested against dummy data. Until
+then every environment runs on Neon `development` — see Global Constraints.
+
+The cutover is deliberately one small, reversible change: the Vercel Production
+connection strings. Nothing in the code knows which database it is talking to.
+
+- [ ] **Step 1: Apply any new migrations to production**
+
+Neon `production` has only the migrations that existed at Task 2. Everything
+added while building ran against `development` only.
+
+```bash
+pnpm exec dotenv -e .env.neon -- prisma migrate deploy
+```
+
+Expected: the migrations added since Task 2 apply cleanly. `.env.neon` points at
+production — confirm that before running it.
+
+- [ ] **Step 2: Confirm production holds no dummy data**
+
+```bash
+pnpm exec dotenv -e .env.neon -- tsx km-admin-check.mts   # script in Task 6 Step 4
+```
+
+Expected: the two real accounts from Task 6 and nothing else. Then check the
+content tables are empty — no seeded venues or concerts should ever have reached
+production.
+
+- [ ] **Step 3: Switch the Vercel Production variables**
+
+Settings → Environment Variables, **Production scope only**:
+
+| Name | From | To |
+|---|---|---|
+| `DATABASE_URL` | Neon `development` pooled | Neon **`production` pooled** |
+| `DIRECT_URL` | Neon `development` direct | Neon **`production` direct** |
+
+Leave Preview alone — previews stay on `development` permanently. That is the
+arrangement Task 4 Step 3 describes, and from here on it is load-bearing rather
+than a formality.
+
+- [ ] **Step 4: Redeploy and verify against the real database**
+
+An environment variable change alone does nothing until a new deployment.
+
+Repeat Task 5 Steps 3–5 and Task 6 Steps 5–6 against the live domain. The admin
+login is the important one: it proves the real accounts, on the real database,
+work through the deployed app.
+
+- [ ] **Step 5: Verify the backup path now, not later**
+
+Task 8's restore drill is only meaningful against the database that holds real
+data. Run it now if it was deferred, and take the first off-platform dump.
+
+- [ ] **Step 6: Re-check that no dummy data is reachable**
+
+Open the public site and the admin event list. Any test concert visible here
+means a variable is still pointing at `development`.
+
+---
+
 ## Definition of done
 
 - [ ] Neon project in `eu-central-1` with `production` and `development` branches
@@ -694,6 +770,9 @@ Write the rollback steps into the staff runbook, not just this document.
 - [ ] An off-platform dump exists
 - [ ] Uptime monitoring alerts a phone someone carries
 - [ ] Someone other than the developer knows how to roll back
+- [ ] **At cutover (Task 9):** Production variables point at Neon `production`,
+      Preview still points at `development`, migrations are applied, and no
+      dummy content is reachable from the live site
 
 ---
 

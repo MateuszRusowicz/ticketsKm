@@ -31,9 +31,11 @@ email, PDF tickets and the door scanner are not built yet.
 
 ## Access and accounts
 
-**This is the section that matters most.** Everything below is held under the
-owner's personal accounts. Nothing is on a shared festival account, and there is
-no second person with access to any of it.
+Everything below is held under the owner's personal accounts. Nothing is on a
+shared festival account, and there is no second person with access to any of it.
+That is a deliberate choice for now — spreading access while the app is still
+being built adds coordination cost and buys little. Revisit it once the build is
+finished; see [Once the app is done](#once-the-app-is-done).
 
 | Service | What | Who holds it | Notes |
 |---|---|---|---|
@@ -44,16 +46,6 @@ no second person with access to any of it.
 | **Stripe** | not yet created | — | needed for Plan 05 |
 | **Resend** | not yet created | — | needed for Plan 05 |
 | **Uptime monitoring** | not yet configured | — | Plan 02 Task 8 |
-
-### What to do about it
-
-Two people should be able to reach production before tickets go on sale. Right
-now the project has a bus factor of one, and the failure mode is not abstract:
-if the owner is unreachable on the evening of the sale, nobody can roll back a
-bad deploy, restore a database, or reset a locked admin account.
-
-At minimum, add a second member to the Vercel and Neon projects, and confirm who
-can change DNS.
 
 ---
 
@@ -95,11 +87,24 @@ the published password `DevPassword123!`.
 
 ## Environments
 
-| | URL | Database |
-|---|---|---|
-| Production | <https://tickets-km.vercel.app> | Neon branch `production` |
-| Preview (per PR) | Vercel-generated | Neon branch `development` |
-| Local | <http://localhost:3000> | Docker Postgres `km_dev` |
+| | URL | Database — **until launch** | Database — after cutover |
+|---|---|---|---|
+| Production | <https://tickets-km.vercel.app> | Neon `development` | Neon `production` |
+| Preview (per PR) | Vercel-generated | Neon `development` | Neon `development` |
+| Local | <http://localhost:3000> | Docker Postgres `km_dev` | unchanged |
+
+**The whole app is built and tested against dummy data on Neon
+`development`.** The real database is connected once, at the end, by Plan 02
+Task 9 — a change to two Vercel Production variables and a redeploy. Until then
+Neon `production` sits dormant, holding the three migrations from Task 2 and the
+two real admin accounts from Task 6.
+
+One consequence: pre-launch, Production and Preview share a database, so a
+migration on any feature branch reaches the live site too.
+
+**Never seed admin accounts, even on `development`** — the seed password is
+published in this repository and the site is on a public URL. Seed content;
+create accounts with `pnpm admin:create`.
 
 `bilety.krzyzowa-music.eu` is **not connected yet** — that is Plan 02, Task 7.
 
@@ -114,14 +119,45 @@ redeploy; editing the variable alone does nothing.
 
 ## Repository
 
-**There is no `main` branch.** All 23 commits are on
-`feat/plan-01-foundations`, which has never been merged and has no target to
-merge into. Someone needs to decide whether that branch becomes `main` or
-whether `main` is created from it. Until then, "deploy to production" and "push
-to the feature branch" are the same action, which is not a safe long-term
-arrangement.
+### Branching model
+
+| Branch | Holds | Deploys to |
+|---|---|---|
+| `main` | production code — what is live | Vercel Production → Neon `production` |
+| `development` | finished, accepted features awaiting release | Vercel Preview → Neon `development` |
+| `feat/*`, `fix/*` | work in progress | Vercel Preview → Neon `development` |
+
+Work flows `feature → development → main`. Only `main` reaches production data.
+
+> **"development" means three different things.** They are unrelated objects
+> that happen to share a name:
+>
+> | | What it is |
+> |---|---|
+> | git `development` | branch where finished features integrate |
+> | Neon `development` | the database every non-production deploy talks to |
+> | Vercel **Development** | local `vercel dev` environment — ignore it |
+>
+> A feature branch and the git `development` branch share the one Neon
+> `development` database, so a migration on either is visible to both.
+
+**Set up 27 Aug 2026.** `main` and `development` were branched from
+`feat/plan-01-foundations`, and Vercel's Production environment now tracks
+`main`. Preview tracks all other branches. `feat/plan-01-foundations` is
+redundant — its commits are `main` — and can be deleted locally and on the
+remote.
 
 CI runs `typecheck`, `lint` and `test` on Node 24 for every push.
+
+### Where the branch settings live
+
+Vercel's production branch is **not** under Settings → Git, where it used to be.
+It is **Settings → Environments → Production → Branch Tracking**. The Preview
+environment on the same screen tracks "All unassigned git branches", which is
+what routes `development` and every feature branch to the Neon `development`
+database.
+
+GitHub's default branch is Settings → General → Default branch.
 
 **Commits are made by the repository owner**, not by tooling or agents.
 
@@ -182,21 +218,23 @@ hours", on the one evening of the year that matters.
 
 Ordered by what would hurt most.
 
-1. **Bus factor of one.** One person holds every account. Fix before the sale.
-2. **No monitoring, no tested restore, no off-platform backup.** All three are
+1. **No monitoring, no tested restore, no off-platform backup.** All three are
    Plan 02 Task 8, all three are the things you need at 20:00 on sale night.
-3. **The Neon database password was pasted into a chat transcript.** It should
+2. **The Neon database password was pasted into a chat transcript.** It should
    be rotated: Neon → Roles → Reset password, then update the Vercel variables,
    which change with it.
-4. **DNS control is unconfirmed.** This gates both `bilety.krzyzowa-music.eu`
+3. **DNS control is unconfirmed.** This gates both `bilety.krzyzowa-music.eu`
    and Resend's SPF/DKIM records. Ticket emails landing in spam is a
    project-ending failure, and this item has the longest lead time of anything
    outstanding. Confirm it now, not in Plan 05.
-5. **No `main` branch.** See Repository above.
-6. **Vercel billing tier must be Pro.** Hobby forbids commercial use; selling
+4. **No `main` branch.** See Repository above.
+5. **Vercel billing tier must be Pro.** Hobby forbids commercial use; selling
    tickets on it is a terms violation.
-7. **GitHub Actions warns that Node 20 actions are deprecated.** Cosmetic — it
+6. **GitHub Actions warns that Node 20 actions are deprecated.** Cosmetic — it
    refers to `checkout@v4` / `setup-node@v4`, not our `node-version: 24`.
+
+Access concentration is deliberately **not** on this list while the app is being
+built — see [Once the app is done](#once-the-app-is-done).
 
 ---
 
@@ -231,3 +269,48 @@ vector format.
 
 Plans 03–08 are written just before each is executed, so they describe the code
 that actually exists rather than the code imagined eight weeks earlier.
+
+---
+
+## Once the app is done
+
+Not now. These are worth doing when the build is finished and the system is
+about to carry real money — raising them mid-build costs time and money for a
+risk that only becomes real at launch.
+
+### Spread access beyond one person
+
+Today one person can log into GitHub, Vercel and Neon, and nobody else can. That
+is fine while the app is being written; it stops being fine the evening tickets
+go on sale. If the only key-holder is on a train, ill, or asleep when something
+breaks, nobody else can roll back a deploy, restore the database, or reset a
+locked admin account — everyone else can only watch it stay broken.
+
+Three ways to fix it, cheapest first:
+
+1. **A break-glass envelope.** Put the Vercel and Neon logins in the festival's
+   password manager, in a vault at least one trusted non-technical person can
+   open, next to a one-page sheet: how to roll back, who to call, what "the site
+   is down" looks like. Costs nothing. Weaker than a real second account,
+   because it means sharing personal logins — but far better than nothing.
+2. **A second member on Neon.** Neon holds the data that cannot be recreated, so
+   if only one service gets a second pair of hands, make it this one. Project
+   Settings → Members → Invite; they accept by email and get their own login.
+3. **A second member on Vercel.** Same idea, but Vercel bills per seat — roughly
+   $20/month — and needs a Team rather than a personal account, so the project
+   would move to one. Optional if someone else can already reach Neon and
+   somebody knows how to contact the owner.
+
+The person does not have to be a developer. Someone who can follow written
+instructions and click **Promote to Production** covers the rollback case, which
+is the most likely emergency.
+
+The open question is whether such a person exists around the festival. If not,
+option 1 is the whole answer and the other two are moot.
+
+### Also worth revisiting then
+
+- Confirm who controls DNS for `krzyzowa-music.eu`, and record it here.
+- Decide whether the festival should own the Vercel, Neon and Stripe accounts
+  rather than an individual — this is easier to do before Stripe is connected to
+  a bank account than after.
