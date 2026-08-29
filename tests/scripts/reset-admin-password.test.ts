@@ -21,6 +21,12 @@ function passwordFrom(stdout: string): string {
 
 const EMAIL = 'reset-target@example.test'
 
+// Every test in this file spawns `pnpm exec tsx`, which costs a couple of
+// seconds before the script even starts. Vitest's default testTimeout is 5s,
+// and only hookTimeout was raised — so these were one slow run away from
+// failing regardless of the code under test.
+const SPAWN_TIMEOUT = 30_000
+
 beforeEach(async () => {
   // Same reasoning as tests/prisma/seed.test.ts: one database, sequential
   // files, residue from earlier files breaks exact-count assertions.
@@ -42,18 +48,18 @@ describe('reset-admin-password', () => {
 
     const user = await db.adminUser.findUniqueOrThrow({ where: { email: EMAIL } })
     expect(await verifyPassword(user.passwordHash, password)).toBe(true)
-  })
+  }, SPAWN_TIMEOUT)
 
   it('invalidates the previous password', async () => {
     reset(EMAIL)
 
     const user = await db.adminUser.findUniqueOrThrow({ where: { email: EMAIL } })
     expect(await verifyPassword(user.passwordHash, 'OriginalPassword123!')).toBe(false)
-  })
+  }, SPAWN_TIMEOUT)
 
   it('generates a different password each run', () => {
     expect(passwordFrom(reset(EMAIL))).not.toBe(passwordFrom(reset(EMAIL)))
-  })
+  }, SPAWN_TIMEOUT)
 
   it('clears a lockout, not just the failure counter', async () => {
     // Both fields matter. Clearing failedLoginCount alone leaves lockedUntil
@@ -70,7 +76,7 @@ describe('reset-admin-password', () => {
     const user = await db.adminUser.findUniqueOrThrow({ where: { email: EMAIL } })
     expect(user.failedLoginCount).toBe(0)
     expect(user.lockedUntil).toBeNull()
-  })
+  }, SPAWN_TIMEOUT)
 
   it('revokes existing sessions', async () => {
     // A reset is what you do when a credential may be compromised. Leaving
@@ -88,7 +94,7 @@ describe('reset-admin-password', () => {
     reset(EMAIL)
 
     expect(await db.adminSession.count({ where: { adminUserId: user.id } })).toBe(0)
-  })
+  }, SPAWN_TIMEOUT)
 
   it('matches on address case, as the login path does', async () => {
     // AdminUser.email is a case-sensitive unique index and create-admin.ts
@@ -98,11 +104,14 @@ describe('reset-admin-password', () => {
 
     const user = await db.adminUser.findUniqueOrThrow({ where: { email: EMAIL } })
     expect(await verifyPassword(user.passwordHash, password)).toBe(true)
-  })
+  }, SPAWN_TIMEOUT)
 
   it('fails cleanly for an unknown address', () => {
-    expect(() => reset('nobody@example.test')).toThrow()
-
+    // One spawn, not two: each costs ~2.5s and two of them sat right on
+    // Vitest's 5s default, which made this test fail only under load.
+    // expect.assertions guards the other half — without it, a run that did
+    // NOT throw would skip the catch block and pass silently.
+    expect.assertions(2)
     try {
       reset('nobody@example.test')
     } catch (e) {
@@ -110,9 +119,10 @@ describe('reset-admin-password', () => {
       expect(err.stderr).toContain('No admin account')
       expect(err.status).toBe(1)
     }
-  })
+  }, SPAWN_TIMEOUT)
 
   it('requires an email argument', () => {
+    expect.assertions(2)
     try {
       reset()
       throw new Error('expected a non-zero exit')
@@ -121,5 +131,5 @@ describe('reset-admin-password', () => {
       expect(err.stderr).toContain('Usage:')
       expect(err.status).toBe(1)
     }
-  })
+  }, SPAWN_TIMEOUT)
 })
