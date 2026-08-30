@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { applyPercentDiscount, formatMoney, toMajor, toMinor } from '@/lib/shared/money'
+import {
+  applyPercentDiscount,
+  currencyForLocale,
+  formatMoney,
+  isCurrency,
+  resolveCurrency,
+  toMajor,
+  toMinor,
+} from '@/lib/shared/money'
 
 // Intl separates the amount from the currency symbol with a non-breaking
 // space (U+00A0) in pl-PL and de-DE, and some ICU versions use a narrow
@@ -56,5 +64,46 @@ describe('applyPercentDiscount', () => {
 
   it('never returns a negative discount', () => {
     expect(applyPercentDiscount(5000, -10)).toBe(0)
+  })
+})
+
+describe('currencyForLocale', () => {
+  it('defaults Polish visitors to PLN', () => {
+    expect(currencyForLocale('pl')).toBe('PLN')
+  })
+
+  it('defaults German and English visitors to EUR', () => {
+    // en maps to EUR rather than GBP or USD: the English page exists for
+    // international visitors to a Polish festival, not for a UK audience.
+    expect(currencyForLocale('en')).toBe('EUR')
+    expect(currencyForLocale('de')).toBe('EUR')
+  })
+})
+
+describe('resolveCurrency', () => {
+  it('honours a valid stored preference over the locale default', () => {
+    expect(resolveCurrency('EUR', 'pl')).toBe('EUR')
+    expect(resolveCurrency('PLN', 'de')).toBe('PLN')
+  })
+
+  it('falls back to the locale default when nothing is stored', () => {
+    expect(resolveCurrency(undefined, 'pl')).toBe('PLN')
+    expect(resolveCurrency(undefined, 'de')).toBe('EUR')
+  })
+
+  it('falls back rather than throwing on a junk cookie value', () => {
+    // The cookie is client-writable, so anything can arrive here.
+    expect(resolveCurrency('USD', 'pl')).toBe('PLN')
+    expect(resolveCurrency('', 'de')).toBe('EUR')
+    expect(resolveCurrency('pln', 'pl')).toBe('PLN')
+  })
+})
+
+describe('isCurrency', () => {
+  it('accepts the two supported currencies and nothing else', () => {
+    expect(isCurrency('PLN')).toBe(true)
+    expect(isCurrency('EUR')).toBe(true)
+    expect(isCurrency('USD')).toBe(false)
+    expect(isCurrency('eur')).toBe(false)
   })
 })

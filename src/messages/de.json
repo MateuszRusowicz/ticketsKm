@@ -1,4 +1,11 @@
 {
-  "site": { "title": "Krzyżowa-Music — Karten", "programme": "Programm" },
-  "common": { "loading": "Wird geladen…", "soldOut": "Ausverkauft" }
+  "site": {
+    "title": "Krzyżowa-Music — Karten",
+    "programme": "Programm",
+    "currency": "Währung"
+  },
+  "common": {
+    "loading": "Wird geladen…",
+    "soldOut": "Ausverkauft"
+  }
 }

@@ -21,6 +21,9 @@ capacity that cannot be lowered below tickets already sold.
 - Pooled reads and interactive transactions verified through `PrismaPg`
 - Vercel project building with `pnpm vercel-build`, functions region `fra1`
 - Deployed successfully — all routes present, all three locales prerendered
+  *(superseded 30 Aug by Plan 03 Task 3: the shop reads a currency cookie and
+  live availability, so `/[locale]` is now server-rendered on demand — `ƒ`, not
+  `●`. Intended; build-time-frozen availability would be worse than useless.)*
 
 ## Next
 

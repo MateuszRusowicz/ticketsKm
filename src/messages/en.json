@@ -1,4 +1,11 @@
 {
-  "site": { "title": "Krzyżowa-Music — tickets", "programme": "Programme" },
-  "common": { "loading": "Loading…", "soldOut": "Sold out" }
+  "site": {
+    "title": "Krzyżowa-Music — tickets",
+    "programme": "Programme",
+    "currency": "Currency"
+  },
+  "common": {
+    "loading": "Loading…",
+    "soldOut": "Sold out"
+  }
 }
