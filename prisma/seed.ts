@@ -38,7 +38,16 @@ async function main() {
   // August, so any literal year goes stale within twelve months and the
   // programme silently empties out once every concert is in the past.
   const day = 86_400_000
-  const inDays = (n: number) => new Date(Date.now() + n * day)
+  /**
+   * N days from now, pinned to 17:00 UTC — 19:00 in Warsaw for most of the
+   * year. Without the fixed hour every seeded concert starts at whatever time
+   * the seed happened to run, which looks obviously wrong on the programme.
+   */
+  const inDays = (n: number) => {
+    const d = new Date(Date.now() + n * day)
+    d.setUTCHours(17, 0, 0, 0)
+    return d
+  }
 
   type Copy = { title: string; description: string; performers: string }
   type Concert = {

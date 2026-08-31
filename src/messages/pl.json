@@ -2,10 +2,76 @@
   "site": {
     "title": "Krzyżowa-Music — bilety",
     "programme": "Program",
-    "currency": "Waluta"
+    "currency": "Waluta",
+    "backToProgramme": "Wróć do programu"
   },
   "common": {
     "loading": "Ładowanie…",
+    "soldOut": "Wyprzedane",
+    "from": "od"
+  },
+  "programme": {
+    "heading": "Program festiwalu",
+    "intro": "Bilety na koncerty Krzyżowa-Music.",
+    "empty": "W tej chwili nie ma koncertów w sprzedaży. Program kolejnej edycji pojawi się tutaj wiosną."
+  },
+  "availability": {
+    "available": "Bilety dostępne",
+    "few": "Ostatnie bilety",
     "soldOut": "Wyprzedane"
+  },
+  "notPurchasable": {
+    "past": "Ten koncert już się odbył.",
+    "notYetOpen": "Sprzedaż rusza {date}.",
+    "closed": "Sprzedaż zakończona.",
+    "soldOut": "Bilety wyprzedane.",
+    "unavailable": "Bilety chwilowo niedostępne."
+  },
+  "concert": {
+    "performers": "Wykonawcy",
+    "venue": "Miejsce",
+    "doors": "Otwarcie drzwi",
+    "price": "Cena biletu",
+    "buy": "Kup bilety",
+    "quantity": "Liczba biletów"
+  },
+  "checkout": {
+    "heading": "Dane do zamówienia",
+    "summary": "{count, plural, one {# bilet} few {# bilety} other {# biletów}} · {total}",
+    "buyerSection": "Dane kupującego",
+    "attendeesSection": "Osoby na biletach",
+    "attendeeLabel": "Imię i nazwisko — bilet {number}",
+    "email": "Adres e-mail",
+    "emailHint": "Na ten adres wyślemy bilety.",
+    "firstName": "Imię",
+    "lastName": "Nazwisko",
+    "phone": "Telefon (opcjonalnie)",
+    "needsInvoice": "Chcę fakturę",
+    "companyName": "Nazwa firmy",
+    "nip": "NIP",
+    "invoiceAddress": "Adres",
+    "acceptedTerms": "Akceptuję {terms} i {privacy}.",
+    "submit": "Przejdź do płatności",
+    "stub": "Formularz jest poprawny. Płatności zostaną podłączone w kolejnym etapie."
+  },
+  "validation": {
+    "required": "To pole jest wymagane.",
+    "email": "Podaj poprawny adres e-mail.",
+    "attendeeName": "Podaj imię i nazwisko dla każdego biletu.",
+    "tooLong": "Ta wartość jest za długa.",
+    "terms": "Musisz zaakceptować regulamin.",
+    "quantity": "Nieprawidłowa liczba biletów."
+  },
+  "legal": {
+    "terms": "Regulamin",
+    "privacy": "Polityka prywatności",
+    "draftNotice": "Wersja robocza — treść zostanie uzupełniona przed uruchomieniem sprzedaży."
+  },
+  "footer": {
+    "festival": "Strona festiwalu"
+  },
+  "notFound": {
+    "heading": "Nie znaleziono strony",
+    "body": "Ten koncert nie istnieje lub nie jest już dostępny."
   }
 }

@@ -2,10 +2,76 @@
   "site": {
     "title": "Krzyżowa-Music — tickets",
     "programme": "Programme",
-    "currency": "Currency"
+    "currency": "Currency",
+    "backToProgramme": "Back to the programme"
   },
   "common": {
     "loading": "Loading…",
+    "soldOut": "Sold out",
+    "from": "from"
+  },
+  "programme": {
+    "heading": "Festival programme",
+    "intro": "Tickets for Krzyżowa-Music concerts.",
+    "empty": "No concerts are on sale at the moment. Next year's programme will appear here in the spring."
+  },
+  "availability": {
+    "available": "Tickets available",
+    "few": "Few tickets left",
     "soldOut": "Sold out"
+  },
+  "notPurchasable": {
+    "past": "This concert has already taken place.",
+    "notYetOpen": "Sales open on {date}.",
+    "closed": "Sales have closed.",
+    "soldOut": "Sold out.",
+    "unavailable": "Tickets are temporarily unavailable."
+  },
+  "concert": {
+    "performers": "Performers",
+    "venue": "Venue",
+    "doors": "Doors open",
+    "price": "Ticket price",
+    "buy": "Buy tickets",
+    "quantity": "Number of tickets"
+  },
+  "checkout": {
+    "heading": "Order details",
+    "summary": "{count, plural, one {# ticket} other {# tickets}} · {total}",
+    "buyerSection": "Your details",
+    "attendeesSection": "Ticket holders",
+    "attendeeLabel": "Full name — ticket {number}",
+    "email": "Email address",
+    "emailHint": "We will send the tickets to this address.",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "phone": "Phone (optional)",
+    "needsInvoice": "I need an invoice",
+    "companyName": "Company name",
+    "nip": "VAT/NIP number",
+    "invoiceAddress": "Address",
+    "acceptedTerms": "I accept the {terms} and the {privacy}.",
+    "submit": "Continue to payment",
+    "stub": "The form is valid. Payment will be connected in a later stage."
+  },
+  "validation": {
+    "required": "This field is required.",
+    "email": "Enter a valid email address.",
+    "attendeeName": "Enter a name for every ticket.",
+    "tooLong": "This value is too long.",
+    "terms": "You must accept the terms.",
+    "quantity": "Invalid number of tickets."
+  },
+  "legal": {
+    "terms": "Terms of sale",
+    "privacy": "Privacy policy",
+    "draftNotice": "Draft — the final text will be added before sales open."
+  },
+  "footer": {
+    "festival": "Festival website"
+  },
+  "notFound": {
+    "heading": "Page not found",
+    "body": "This concert does not exist or is no longer available."
   }
 }

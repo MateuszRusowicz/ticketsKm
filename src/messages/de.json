@@ -1,11 +1,77 @@
 {
   "site": {
-    "title": "Krzyżowa-Music — Karten",
+    "title": "Krzyżowa-Music — Tickets",
     "programme": "Programm",
-    "currency": "Währung"
+    "currency": "Währung",
+    "backToProgramme": "Zurück zum Programm"
   },
   "common": {
     "loading": "Wird geladen…",
+    "soldOut": "Ausverkauft",
+    "from": "ab"
+  },
+  "programme": {
+    "heading": "Festivalprogramm",
+    "intro": "Tickets für die Konzerte von Krzyżowa-Music.",
+    "empty": "Zurzeit sind keine Konzerte im Verkauf. Das Programm der nächsten Ausgabe erscheint hier im Frühjahr."
+  },
+  "availability": {
+    "available": "Tickets verfügbar",
+    "few": "Nur noch wenige Tickets",
     "soldOut": "Ausverkauft"
+  },
+  "notPurchasable": {
+    "past": "Dieses Konzert hat bereits stattgefunden.",
+    "notYetOpen": "Verkaufsstart am {date}.",
+    "closed": "Der Verkauf ist beendet.",
+    "soldOut": "Ausverkauft.",
+    "unavailable": "Tickets sind derzeit nicht verfügbar."
+  },
+  "concert": {
+    "performers": "Mitwirkende",
+    "venue": "Ort",
+    "doors": "Einlass",
+    "price": "Ticketpreis",
+    "buy": "Tickets kaufen",
+    "quantity": "Anzahl der Tickets"
+  },
+  "checkout": {
+    "heading": "Bestelldaten",
+    "summary": "{count, plural, one {# Ticket} other {# Tickets}} · {total}",
+    "buyerSection": "Ihre Daten",
+    "attendeesSection": "Ticketinhaber",
+    "attendeeLabel": "Vor- und Nachname — Ticket {number}",
+    "email": "E-Mail-Adresse",
+    "emailHint": "An diese Adresse senden wir die Tickets.",
+    "firstName": "Vorname",
+    "lastName": "Nachname",
+    "phone": "Telefon (optional)",
+    "needsInvoice": "Ich benötige eine Rechnung",
+    "companyName": "Firmenname",
+    "nip": "USt-IdNr./NIP",
+    "invoiceAddress": "Adresse",
+    "acceptedTerms": "Ich akzeptiere die {terms} und die {privacy}.",
+    "submit": "Weiter zur Zahlung",
+    "stub": "Das Formular ist gültig. Die Zahlung wird in einem späteren Schritt angebunden."
+  },
+  "validation": {
+    "required": "Dieses Feld ist erforderlich.",
+    "email": "Bitte geben Sie eine gültige E-Mail-Adresse ein.",
+    "attendeeName": "Bitte geben Sie für jedes Ticket einen Namen an.",
+    "tooLong": "Dieser Wert ist zu lang.",
+    "terms": "Sie müssen die Bedingungen akzeptieren.",
+    "quantity": "Ungültige Anzahl von Tickets."
+  },
+  "legal": {
+    "terms": "Verkaufsbedingungen",
+    "privacy": "Datenschutzerklärung",
+    "draftNotice": "Entwurf — der endgültige Text wird vor Verkaufsstart ergänzt."
+  },
+  "footer": {
+    "festival": "Festival-Website"
+  },
+  "notFound": {
+    "heading": "Seite nicht gefunden",
+    "body": "Dieses Konzert existiert nicht oder ist nicht mehr verfügbar."
   }
 }
