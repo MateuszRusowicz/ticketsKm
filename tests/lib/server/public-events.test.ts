@@ -128,6 +128,14 @@ describe('purchasability', () => {
     expect(event.notPurchasableReason).toBe('notYetOpen')
   })
 
+  it('carries salesOpenAt through, so the UI can say when sales open', async () => {
+    // A notYetOpen reason without the date is not actionable for a visitor.
+    const opens = inDays(5)
+    await makeEvent({ slug: 'early', salesOpenAt: opens })
+    const [event] = await listPublicEvents('pl')
+    expect(event.salesOpenAt?.toISOString()).toBe(opens.toISOString())
+  })
+
   it('is purchasable once salesOpenAt has passed', async () => {
     await makeEvent({ slug: 'open', salesOpenAt: inDays(-1) })
     const [event] = await listPublicEvents('pl')

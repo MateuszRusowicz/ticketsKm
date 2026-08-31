@@ -47,6 +47,10 @@ export type PublicEvent = {
   priceEur: number
   maxPerOrder: number
 
+  // Needed to render "sales open on <date>": a notYetOpen reason without the
+  // date tells the visitor nothing actionable.
+  salesOpenAt: Date | null
+
   available: number
   band: AvailabilityBand
   purchasable: boolean

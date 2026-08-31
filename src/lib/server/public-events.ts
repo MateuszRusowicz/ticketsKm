@@ -113,6 +113,7 @@ function toPublicEvent(row: Row, locale: Locale, now: Date): PublicEvent | null 
       description: translation.description,
       performers: translation.performers,
     },
+    salesOpenAt: row.salesOpenAt,
     ticketTypeId: ticketType.id,
     pricePln: ticketType.pricePln,
     priceEur: ticketType.priceEur,
