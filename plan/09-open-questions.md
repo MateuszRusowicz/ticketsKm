@@ -95,7 +95,22 @@ On a 900-seat room this is harmless. Consider a shorter window for the smaller
 venues, plus an explicit hold release when a payment redirect fails rather than
 waiting for expiry.
 
-**Needed before:** Plan 03 (inventory).
+**Decided 30 Aug 2026: 30 minutes, flat.** The per-venue variation was
+considered and rejected — it adds a configuration axis to the riskiest code in
+the system for a scenario that needs 300 simultaneous checkouts on the smaller
+venue.
+
+The decision is safe only if holds are released **promptly on failure**, not
+merely on expiry. Plan 04 must therefore release a hold immediately when:
+
+- the payment intent fails or is cancelled,
+- the buyer abandons the redirect and returns to the concert page,
+- the order is explicitly cancelled.
+
+Expiry via the 5-minute sweep is the backstop, not the primary mechanism. If
+the only path back to available inventory is a 30-minute timer, then a burst of
+abandoned checkouts does behave like a sell-out — which is the concern that
+made this a question in the first place.
 
 ### 8. Sale opening — is there an announced on-sale moment?
 

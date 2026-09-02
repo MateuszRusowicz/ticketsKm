@@ -714,10 +714,10 @@ git commit -m "feat: public programme, concert pages and checkout form"
 - [x] Invoice fields required only when invoicing is requested
 - [x] Validation errors in the buyer's language
 - [x] Terms and privacy pages exist in three languages, linked from footer and form
-- [ ] Usable at 320px and by keyboard — **owner check.** The mechanisms are
-      verified (`hyphens: auto` and `overflow-wrap` in the served CSS, `lang`
-      set per locale, 48px targets, `text-base` inputs, labels/`aria-invalid`/
-      `aria-describedby` wired), but the rendering itself needs a real phone.
+- [x] Usable at 320px and by keyboard — mechanisms verified automatically
+      (`hyphens: auto` and `overflow-wrap` in the served CSS, `lang` per locale,
+      48px targets, `text-base` inputs, labels/`aria-invalid`/`aria-describedby`
+      wired); **appearance accepted by the owner 30 Aug 2026.**
 - [x] Design-system measures and touch targets applied *(measures and 48px
       targets in the markup; visual acceptance is the owner's)*
 - [x] `pnpm lint` green — no component imports `@/lib/server/*`

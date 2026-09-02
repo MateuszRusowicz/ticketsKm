@@ -11,6 +11,7 @@ Each row records what was decided and why, so nobody re-litigates it in month tw
 | Ticket types | **One price per concert** | Modelled as a `TicketType` table with exactly one row per event, so a reduced price can be added later without a migration. |
 | Buyer accounts | **Guest checkout only** | Sales happen once a year. Accounts would add registration, login, password reset, session security and a GDPR liability for zero benefit. |
 | Multi-concert cart | **No — one concert per order** (27 Aug 2026) | The schema supports it, but the UI cost is roughly a week: persistent cart, cart page, cross-event availability at payment time, and partial-failure handling when one concert sells out mid-checkout. A buyer attending three concerts pays three times. |
+| Hold duration | **30 minutes, flat across all venues** (30 Aug 2026) | Long enough for a Przelewy24 bank transfer, short enough that abandoned checkouts do not hoard a sold-out concert. A per-venue window was considered and rejected as complexity for a risk that only bites if 300 people check out at once on the 300-seat concert. Mitigated by releasing holds on failure rather than only on expiry — see below. |
 | Free tickets | **Staff invitations + 100% promo codes** | Two distinct flows, both bypassing Stripe. |
 | Refunds | **In-app, full and partial** | Staff must not have to use the Stripe dashboard for routine work. |
 | Invoices | **Invoice on request — details captured only** | The app stores company name / NIP / address and exports them. It does not generate faktury; that stays with accounting. |

@@ -13,8 +13,9 @@ The application runs locally in full: `pnpm dev`, then log in at
 concert with Polish, English and German content, prices in PLN and EUR, and a
 capacity that cannot be lowered below tickets already sold.
 
-**Plan 03 — Public programme: tasks 0–12 done**, pending the owner's visual
-acceptance. 185 tests across 24 files, green twice from a clean tree.
+**Plan 03 — Public programme: complete.** All 13 tasks, definition of done
+fully ticked, manual pass accepted by the owner 30 Aug 2026. 185 tests across
+24 files, green twice from a clean tree.
 
 The demo walks end to end: programme listing → concert page → buy box → order
 form, in three languages and two currencies, on `feat/plan-03-public-programme`.
@@ -40,17 +41,13 @@ form, in three languages and two currencies, on `feat/plan-03-public-programme`.
 
 ## Next
 
-**Next up: the owner's look at the demo, then Plan 04 (inventory).**
+**Next up: merge `feat/plan-03-public-programme` into `development`, then
+Plan 04 (inventory).**
 
-Run `pnpm dev` and open <http://localhost:3000/pl>. Two things need a human:
-the 320px rendering (the mechanisms are verified, the appearance is not) and
-whether the design is what the festival wants. Everything else in Plan 03's
-definition of done is ticked and evidenced.
-
-**Plan 04 is blocked** on one unanswered question: hold duration by venue size
-(see [`09-open-questions.md`](09-open-questions.md)). A flat 30 minutes lets 300
-people hold every seat of a 300-seat concert while everyone else sees "sold
-out".
+**Plan 04 is unblocked.** Hold duration settled 30 Aug 2026: **30 minutes,
+flat across all venues.** The accompanying requirement is that Plan 04 releases
+holds on payment failure, abandonment and cancellation — not only on expiry.
+The 5-minute sweep is the backstop, not the mechanism.
 
 Plan 02's remaining tasks are all deferred to launch. For reference, the two
 production accounts are:
