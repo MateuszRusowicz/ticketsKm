@@ -65,6 +65,15 @@ scanner can show a name to check against.
 
 ### 5. Refund policy
 
+> **Related, and load-bearing (noted 30 Aug 2026):** under art. 38 of the Polish
+> consumer-rights act, services tied to a leisure event on a specified date are
+> **exempt from the 14-day right of withdrawal**. So there is no automatic
+> statutory return for a concert ticket, and whatever the festival offers is a
+> policy choice rather than a legal minimum. The terms page carries a
+> placeholder saying exactly this, marked for a lawyer to confirm. Decide the
+> policy and the clause together — the admin refund UI in Plan 06 has to reflect
+> whichever answer wins.
+
 Until when can a buyer request a refund — 24 hours before the concert, 7 days,
 never? Is there a fee? This is a `regulamin` question more than a code question,
 but the admin UI should reflect the policy, and the terms page must state it.
