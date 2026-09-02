@@ -1,4 +1,4 @@
-# Status — 30 August 2026
+# Status — 2 September 2026
 
 Where the project stands, for whoever picks it up next. Update this at the end
 of a working session; it is the fastest way back into context.
@@ -41,13 +41,39 @@ form, in three languages and two currencies, on `feat/plan-03-public-programme`.
 
 ## Next
 
+**The milestone is a test-mode demo, decided 2 September 2026.** A working
+product that takes dummy payments and creates real orders for both Polish and
+German buyers, in Stripe **test mode**, on `tickets-km.vercel.app`. The domain
+and the link from the existing Wix site are connected only **after** that demo
+is accepted. Full reasoning in
+[`00-decisions.md`](00-decisions.md#delivery-sequence-a-test-mode-demo-before-the-domain).
+
+Demo scope is **Plan 04 + the payment half of Plan 05**:
+
+> buyer picks a concert → seats are held → pays with test BLIK / P24 / Klarna /
+> card → sees a confirmed order → capacity has decremented.
+
+**Deliberately outside the demo:** ticket email, PDF, QR codes, the door
+scanner, promo codes and refunds. They stay in Plans 05–07.
+
 **Next up: merge `feat/plan-03-public-programme` into `development`, then
-Plan 04 (inventory).**
+write Plan 04 (inventory).**
 
 **Plan 04 is unblocked.** Hold duration settled 30 Aug 2026: **30 minutes,
 flat across all venues.** The accompanying requirement is that Plan 04 releases
 holds on payment failure, abandonment and cancellation — not only on expiry.
 The 5-minute sweep is the backstop, not the mechanism.
+
+**Plan 05 is now unblocked too, for the demo only.** Test mode needs no
+verified Polish entity, so a fresh test-mode Stripe account with country PL is
+created now and its keys go in as environment variables — the real account swaps
+in at launch with no code change. Two caveats that survive this:
+
+- **Klarna's availability to a real Polish Stripe account is still unverified.**
+  A test-mode account offering it proves nothing about the live one.
+- **DNS control is still the longest-lead-time item outstanding.** It no longer
+  blocks the demo (no domain, no email), but it blocks launch, and it gates
+  Resend's SPF/DKIM records when Plan 05's fulfilment half is built.
 
 Plan 02's remaining tasks are all deferred to launch. For reference, the two
 production accounts are:
@@ -82,7 +108,7 @@ and the site is on a public URL. Use `pnpm admin:create`.
 
 | Task | What | When |
 |---|---|---|
-| 7 | Point `bilety.krzyzowa-music.eu` at Vercel via CNAME. | **Deferred to launch** — decided 27 Aug 2026 to stay on `tickets-km.vercel.app` until the app is tested and the team agrees. Confirm *who controls DNS* now regardless; Plan 05 needs the same access for Resend. |
+| 7 | Point `bilety.krzyzowa-music.eu` at Vercel via CNAME, and link it from the existing Wix site. | **Deferred until the test-mode demo is accepted** — reaffirmed 2 Sep 2026. Confirm *who controls DNS* now regardless: it is the longest-lead-time item outstanding and Plan 05's email half needs the same access for Resend's SPF/DKIM. |
 | 8 | Verify a Neon point-in-time restore by performing one; take an off-platform `pg_dump`; add uptime monitoring. | Restore drill worth rehearsing now; dump at cutover. Needs `sudo apt install postgresql-client-16`. |
 | 9 | Cut over to the real database and connect the domain. | **Last**, once the app is finished. |
 

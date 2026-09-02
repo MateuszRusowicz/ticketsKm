@@ -118,6 +118,56 @@ Consequence: currency defaults from locale (PL → PLN, DE/EN → EUR) with a
 visible manual switcher, and is frozen onto the order at creation. Refunds are
 issued in the original currency.
 
+**Currency freeze point.** `Order.currency` is set from the hidden `currency`
+field on the checkout form, which reflects the `km_currency` cookie at the
+moment the order page rendered. The switcher is hidden on
+`/koncert/*/zamowienie` so the currency shown in the summary and the currency
+charged never diverge. Decided 2 Sep 2026.
+
+Two options were rejected. Leaving the switcher live on the order page lets the
+displayed total and the charged total diverge if a buyer switches after the page
+renders. Pinning currency earlier — at the concert page — was rejected as
+surprising: a buyer who lands on a German-language page and wants to pay in
+złoty should still be able to say so before committing.
+
+## Delivery sequence: a test-mode demo before the domain
+
+**Decided 2 September 2026 by the owner.** The next milestone is a
+**demonstrable product running dummy payments and orders in Stripe test mode**,
+for both Polish and German buyers. Connecting `krzyzowa-music.eu` — and linking
+the ticketing app from the existing Wix site — happens *after* that demo
+succeeds, not before.
+
+Three things were settled with it:
+
+| Question | Choice | Consequence |
+|---|---|---|
+| How far does the demo go? | **Buyer → hold → test payment → confirmed order.** No ticket email, no PDF, no QR, no door scanner. | Scope is **Plan 04 plus the payment half of Plan 05**. Fulfilment (email, PDF, scanner) stays in Plans 05–07 and is explicitly *not* demo scope. |
+| "Multiple providers"? | **Several payment methods through one Stripe integration** — BLIK and Przelewy24 for PL, Klarna / PayPal / SEPA / cards for DE. | No change: this is the Payment Element decision already recorded under **Technical**. No provider-abstraction layer, one webhook path, one reconciliation story. |
+| Which Stripe account? | **A fresh test-mode account with country PL**, created now. | Unblocks the build today. The real account's keys swap in at launch with no code change, because keys are environment variables. |
+
+**What this unblocks.** Two of the three open questions in
+[`09-open-questions.md`](09-open-questions.md) stop blocking the *demo*, though
+both still block *launch*:
+
+- **DNS control (question 1)** gated the subdomain and Resend's SPF/DKIM
+  records. The demo connects no domain and sends no email, so neither applies.
+  It remains the longest-lead-time item outstanding and still has to be answered
+  before launch.
+- **The real Stripe account (question 2)** gated payments. Test mode needs no
+  verified entity. **Klarna's availability to a Polish Stripe account is still
+  unverified and must be checked on the real account** — a test-mode account
+  offering it is not evidence that the live one will.
+
+**What this defers.** Plan 02's tasks 7 and 9 (the CNAME and the production
+database cutover) were already deferred to launch; this decision confirms them
+and adds the Wix link-through to the same bucket. Task 8 — the Neon restore
+drill — is unaffected and can still be rehearsed at any time.
+
+**The demo runs on the Neon `development` branch with dummy data**, consistent
+with the 27 Aug 2026 decision. Nothing about this milestone touches the dormant
+`production` branch.
+
 ## Divergences from the original `plan.md`
 
 | `plan.md` said | This plan says | Why |

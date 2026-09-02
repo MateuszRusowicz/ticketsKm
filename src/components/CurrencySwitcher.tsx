@@ -3,13 +3,21 @@
 import { useRouter } from 'next/navigation'
 import { useTransition } from 'react'
 import { setCurrencyAction } from '@/app/(shop)/actions'
+import { usePathname } from '@/i18n/routing'
 import { CURRENCIES, type Currency } from '@/lib/shared/money'
 
 const LABEL: Record<Currency, string> = { PLN: 'zł', EUR: '€' }
 
 export function CurrencySwitcher({ active, label }: { active: Currency; label: string }) {
   const router = useRouter()
+  const pathname = usePathname()
   const [pending, startTransition] = useTransition()
+
+  // Currency is frozen at the order page (00-decisions.md, "Currency freeze
+  // point"): the summary must show what will actually be charged. usePathname()
+  // from @/i18n/routing strips the locale prefix, so this is /koncert/…/zamowienie.
+  // Called after every hook — an early return above them breaks the rules of hooks.
+  if (pathname.endsWith('/zamowienie')) return null
 
   function choose(currency: Currency) {
     if (currency === active) return

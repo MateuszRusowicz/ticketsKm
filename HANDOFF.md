@@ -247,8 +247,8 @@ Blocking, with the plan each one holds up. Full detail in
 
 | | Question | Blocks |
 |---|---|---|
-| 1 | **Who controls DNS for `krzyzowa-music.eu`?** Longest lead time of anything outstanding — it gates both the subdomain and Resend's SPF/DKIM records, and ticket email landing in spam is a project-ending failure. | Plans 02, 05 |
-| 2 | Does the Stripe account exist for the Polish entity, and is Klarna actually available to it? | Plan 05 |
+| 1 | **Who controls DNS for `krzyzowa-music.eu`?** Longest lead time of anything outstanding — it gates both the subdomain and Resend's SPF/DKIM records, and ticket email landing in spam is a project-ending failure. | Launch. **Not the demo** (2 Sep 2026) — it connects no domain and sends no email. Still answer it early; nothing shortens a DNS lead time. |
+| 2 | Does the Stripe account exist for the Polish entity, and is Klarna actually available to it? | Launch. **Not the demo** — test mode needs no verified entity. Klarna on a *live* PL account stays unverified, and a test account offering it proves nothing. |
 | 3 | Refund policy — and note that under art. 38 of the Polish consumer-rights act, dated leisure events are **exempt from the 14-day right of withdrawal**, so whatever is offered is a policy choice, not a legal minimum. | Plan 06 |
 
 **Settled since (27–30 Aug 2026):**
@@ -267,14 +267,25 @@ there is an announced on-sale moment, and logo files in a vector format.
 
 ## What happens next
 
+**The milestone is a test-mode demo (decided 2 Sep 2026).** A product that
+takes dummy payments and creates real orders for Polish and German buyers, in
+Stripe test mode, on `tickets-km.vercel.app`. The domain and the link from the
+existing Wix site follow only once that demo is accepted.
+
 1. **Merge `feat/plan-03-public-programme` into `development`.** Plan 03 is
    complete and accepted; the branch is the only thing holding it.
 2. **Plan 04 — inventory.** The risky core: transactional capacity holds, the
    `heldCount` lifecycle, order creation, and concurrency tests proving a
    900-seat venue cannot oversell. Unblocked as of 30 Aug.
-3. **Plan 05 — payments.** Needs the Stripe account and DNS access, so confirm
-   both while Plan 04 is being built rather than after.
-4. Plan 02's tasks 7–9 (domain, backups, database cutover) all land at launch.
+3. **Plan 05 — payments, the checkout half only.** Stripe Payment Element in
+   test mode with BLIK, Przelewy24, Klarna, SEPA and cards, plus the webhook
+   that confirms an order. **Unblocked as of 2 Sep** by using a fresh test-mode
+   account with country PL; keys are environment variables, so the real account
+   swaps in at launch with no code change.
+4. **Demo, then decide.** Email, PDF tickets, QR codes and the scanner are the
+   other half of Plan 05 and Plan 07 — deliberately after the demo.
+5. Plan 02's tasks 7–9 (domain, backups, database cutover) all land at launch,
+   as does the Wix link-through.
 
 Every plan is written just before it is executed, so it describes the code that
 actually exists rather than the code imagined eight weeks earlier. **Have each

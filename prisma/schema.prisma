@@ -156,6 +156,18 @@ model Order {
   holdExpiresAt         DateTime?
   paidAt                DateTime?
   emailSentAt           DateTime?
+
+  // One entry per admission, shaped [{ index, name }] so the mapping to
+  // Ticket.holderName at fulfilment is explicit rather than positional.
+  // Order-scoped, not item-scoped: a genuine multi-concert order would need
+  // these moved to OrderItem. Guarded by a jsonb_typeof CHECK.
+  attendeeNames         Json?
+
+  // Guards the public order page and the Cancel action. The reference is
+  // drawn from a monotonic sequence and is therefore enumerable, so it can
+  // never be the only thing protecting the page. Plan 05 may replace this
+  // with a signed token.
+  accessToken           String    @default(uuid())
   cancelledAt           DateTime?
 
   @@index([email])

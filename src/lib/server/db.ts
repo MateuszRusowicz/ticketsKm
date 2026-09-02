@@ -9,11 +9,24 @@ import { env } from './env'
 // same code path. Migrations do NOT go through here: the CLI reads
 // DIRECT_URL from prisma.config.ts, because Neon's pooler cannot run them.
 function createClient(): PrismaClient {
-  const adapter = new PrismaPg({ connectionString: env.DATABASE_URL })
+  // max: 10 — Neon's pooled endpoint allows ~10k connections across all
+  // clients. Ten per Vercel instance stays well under budget even at 1000
+  // concurrent instances, which is far beyond festival scale. Raising this
+  // buys throughput per instance at the cost of headroom across them.
+  const adapter = new PrismaPg({ connectionString: env.DATABASE_URL, max: 10 })
 
   return new PrismaClient({
     adapter,
     log: env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+    // Prisma's defaults (maxWait 2s, timeout 5s) are too tight for this
+    // workload in two distinct ways, both of which surface as P2028
+    // "Unable to start a transaction in the given time" — which reads to a
+    // buyer as an outage rather than a sell-out.
+    //   maxWait 15s: Neon scale-to-zero cold starts alone can exceed 2s on
+    //     the first checkout after an idle period.
+    //   timeout 30s: at an on-sale rush every hold serialises on one
+    //     TicketType row, so the queue drains far slower than 5s.
+    transactionOptions: { maxWait: 15_000, timeout: 30_000 },
   })
 }
 

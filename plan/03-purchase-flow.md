@@ -71,7 +71,27 @@ after the hold cannot leak capacity.
 method. BLIK codes have a short confirmation window, Przelewy24 involves a bank
 redirect, and Klarna can take longer still. Thirty minutes is safe; ten is not.
 
-**Expiry** is handled by `/api/cron/release-holds` every 5 minutes:
+**Expiry** is handled by a sweep every 5 minutes. Responsibilities are split
+across three plans — do not implement a later plan's step early:
+
+> **Plan 04's sweep** finds `PENDING` orders where `holdExpiresAt < now()`
+> **AND `stripePaymentIntentId IS NULL`**, decrements `heldCount`, marks the
+> order `EXPIRED`, and writes an audit entry. Plan 04 ships the callable
+> function plus a `pnpm holds:sweep` script; it wires no schedule.
+>
+> **Plan 05's sweep** wraps Plan 04's through the `beforeRelease` hook and
+> cancels the Stripe `PaymentIntent` **before** the hold is released, so a late
+> confirmation cannot succeed against seats already resold. Plan 05 also owns
+> the route handler and the `vercel.json` schedule. The `IS NULL` clause above
+> is what keeps Plan 04's sweep from expiring Przelewy24 / Klarna / SEPA
+> orders, which legitimately sit in `processing` for minutes to days.
+>
+> **Plan 06's sweep** additionally decrements a promo code's `usedCount` when
+> the expired order carried one. No `Order` created by Plan 04 has a
+> `promoCodeId`, so this is inert until then.
+
+The original five-step list follows, and describes the **fully assembled**
+sweep once all three plans have landed:
 
 1. Find orders where `status = PENDING AND holdExpiresAt < now()`.
 2. Decrement `heldCount` by the order quantity.
@@ -95,29 +115,57 @@ hold. The webhook handler therefore re-checks capacity before fulfilling:
 Automatically refunding is the right behaviour: the alternative is a person
 standing at the door of a full room holding a ticket the system sold them.
 
-## The checkout endpoint
+## The checkout submission
 
-`POST /api/checkout`
+**A server action, not an HTTP endpoint.** The application uses server actions
+everywhere — login, admin CRUD — and has no `src/app/api/` directory at all.
+Checkout is colocated with the order page at
+`src/app/(shop)/[locale]/koncert/[slug]/zamowienie/actions.ts`:
 
 ```ts
-// validated with zod — src/lib/shared/schemas.ts
+submitCheckout(prev, formData) → { errors }
+```
+
+The success path does not return; it throws through `redirect(...)`. Tests
+therefore assert on the thrown `REDIRECT:…` string — see
+`tests/app/admin/events-action.test.ts` for the idiom, and
+`src/app/(admin)/admin/events/actions.ts` for the shape to copy.
+
+`experimental.serverActions.allowedOrigins` still has to be set before launch.
+That remains a Plan 08 item.
+
+The payload is validated with Zod by `src/lib/shared/checkout.ts` — **not**
+`src/lib/shared/schemas.ts`, which is the admin event schema:
+
+```ts
+// validated with zod — src/lib/shared/checkout.ts
 {
-  // Exactly one element. One concert per order was decided 27 Aug 2026;
-  // the array shape is kept because the schema supports multi-item orders
-  // and a future reversal should not need a migration.
-  items: [{ ticketTypeId: string, quantity: number }],
+  // Flat, not an array. One concert per order, decided 27 Aug 2026.
+  ticketTypeId: string,   // z.uuid() — checks RFC 4122 version/variant bits
+  quantity: number,       // int, positive, .max(50); server re-clamps to maxPerOrder
   email: string,
   firstName: string, lastName: string,
   phone?: string,
-  // One name per admission. Length MUST equal items[0].quantity.
+  // One name per admission. Length MUST equal quantity (enforced in superRefine).
   attendeeNames: string[],
   locale: 'pl' | 'en' | 'de',
   currency: 'PLN' | 'EUR',
-  promoCode?: string,
-  invoice?: { companyName: string, nip: string, invoiceAddress: string },
-  acceptedTerms: true,
+  needsInvoice: boolean,
+  companyName?: string, nip?: string, invoiceAddress?: string,
+  acceptedTerms: true,    // form-only; no column. The order existing records it.
 }
 ```
+
+**Why the payload is flat rather than an array.** The 27 Aug 2026 decision made
+one concert per order settled, so the array shape earns nothing at the boundary
+and costs a level of nesting in every error path. The *database* still models
+many `OrderItem` rows per `Order`, so reversing the decision would not need a
+data migration for the items themselves. Note one caveat: `Order.attendeeNames`
+(Task 2) is order-scoped, not item-scoped, so a genuine multi-concert order
+would need those names moved to `OrderItem`.
+
+`promoCode` and an `invoice` sub-object appeared in an earlier draft of this
+block. Promo codes are Plan 06; invoice details are flat fields, as above.
 
 **`attendeeNames` was added 27 Aug 2026**, when the festival chose a name per
 ticket over anonymous admission. The invariant that follows:
@@ -242,8 +290,23 @@ ordering loses tickets whenever Resend has a bad minute.
 
 ## Order status page
 
-`/[locale]/order/[reference]` is public but unguessable (the reference is
-combined with a signed lookup token in the return URL). It shows:
+`/[locale]/order/[reference]?t=<accessToken>` is public but guarded.
+
+**The reference alone is guessable and must never be the only guard.** It is
+`KM-{YYYY}-{NNNNNN}`, drawn from a Postgres sequence (`order_reference_seq`),
+so it is monotonic and trivially enumerable — `KM-2026-000001`, `000002`, and
+so on. What protects the page is the `accessToken` on the `Order` (a v4 UUID,
+Plan 04 Task 2), required as `?t=` by both the page lookup and the Cancel
+action, compared in constant time. Plan 05 may replace it with a signed token;
+until then the column is the mechanism. Without it, enumeration would expose
+buyer names and email — and, worse, let anyone cancel a stranger's order and
+release their seats.
+
+Server code never accepts a reference from user input as an authorisation:
+references are generated only inside `createOrder`, and read only as a lookup
+key from a URL the fulfilment flow itself produced.
+
+The page shows:
 
 - `PENDING` → "Payment in progress" with polling every 3 s, and a note that
   bank transfers may take a few minutes.
