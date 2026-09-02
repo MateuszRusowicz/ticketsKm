@@ -13,7 +13,7 @@ Three documents, three jobs:
 | [`plan/STATUS.md`](plan/STATUS.md) | Which task is next, and what is half-finished |
 | **This file** | Who has access to what, and how to operate it |
 
-Last updated: **27 August 2026.**
+Last updated: **30 August 2026.**
 
 ---
 
@@ -243,32 +243,44 @@ built — see [Once the app is done](#once-the-app-is-done).
 Blocking, with the plan each one holds up. Full detail in
 [`plan/09-open-questions.md`](plan/09-open-questions.md).
 
+**Still open:**
+
 | | Question | Blocks |
 |---|---|---|
-| 1 | Can a buyer put several concerts in one order, or one concert per payment? | Plan 03 |
-| 2 | Who controls DNS for `krzyzowa-music.eu`? | Plans 02, 05 |
-| 3 | Does the Stripe account exist, and is Klarna available to it? | Plan 05 |
-| 4 | Do tickets carry attendee names, or are they anonymous? | Plan 03 |
+| 1 | **Who controls DNS for `krzyzowa-music.eu`?** Longest lead time of anything outstanding — it gates both the subdomain and Resend's SPF/DKIM records, and ticket email landing in spam is a project-ending failure. | Plans 02, 05 |
+| 2 | Does the Stripe account exist for the Polish entity, and is Klarna actually available to it? | Plan 05 |
+| 3 | Refund policy — and note that under art. 38 of the Polish consumer-rights act, dated leisure events are **exempt from the 14-day right of withdrawal**, so whatever is offered is a policy choice, not a legal minimum. | Plan 06 |
 
-Question 4 has a recommendation on file: anonymous. The QR is the control, and
-making a buyer name four attendees costs sales.
+**Settled since (27–30 Aug 2026):**
 
-Non-blocking but needed before launch: refund policy, maximum tickets per order,
-hold duration, whether there is an announced on-sale moment, and logo files in a
-vector format.
+- **One concert per order.** No cart.
+- **A name per ticket**, against the plan's own recommendation. Widens the RODO
+  retention job, since personal data now sits on every `Ticket`.
+- **Holds last 30 minutes, flat across venues** — safe only if released on
+  failure and abandonment, not merely on expiry.
+- **Stay on `tickets-km.vercel.app`** until the team agrees to go live.
+
+Still needed before launch, non-blocking: maximum tickets per order, whether
+there is an announced on-sale moment, and logo files in a vector format.
 
 ---
 
 ## What happens next
 
-1. Finish Plan 02 — tasks 7 (domain) and 8 (backups, monitoring, rollback).
-2. Answer the four blocking questions above.
-3. Write Plan 03 (public programme) and have it critiqued before executing. That
-   critique pass caught three blockers in Plan 01, including one that would have
-   failed the build at the last task.
+1. **Merge `feat/plan-03-public-programme` into `development`.** Plan 03 is
+   complete and accepted; the branch is the only thing holding it.
+2. **Plan 04 — inventory.** The risky core: transactional capacity holds, the
+   `heldCount` lifecycle, order creation, and concurrency tests proving a
+   900-seat venue cannot oversell. Unblocked as of 30 Aug.
+3. **Plan 05 — payments.** Needs the Stripe account and DNS access, so confirm
+   both while Plan 04 is being built rather than after.
+4. Plan 02's tasks 7–9 (domain, backups, database cutover) all land at launch.
 
-Plans 03–08 are written just before each is executed, so they describe the code
-that actually exists rather than the code imagined eight weeks earlier.
+Every plan is written just before it is executed, so it describes the code that
+actually exists rather than the code imagined eight weeks earlier. **Have each
+one critiqued by subagents before executing it** — that pass found three
+blockers in Plan 01 and five in Plan 03, all visible in the repository and none
+visible in the design documents.
 
 ---
 

@@ -12,31 +12,42 @@ It is deployed at `tickets-km.vercel.app` and will move to
 
 ## What works today
 
-The project is being built in numbered plans. Two are finished, and it is worth
-being precise about what that does and does not mean.
+The project is being built in numbered plans. Three are finished, and it is
+worth being precise about what that does and does not mean.
 
-**Working:**
+**Working — the back office:**
 
-- Admin login with argon2id password hashing, account lockout and rate limiting
-- Admin dashboard, plus full create / edit / list for concerts
-- Three-language content per concert (title, description, performers)
-- Two explicit prices per concert, PLN and EUR
+- Admin login with argon2id hashing, account lockout and rate limiting
+- Dashboard, plus full create / edit / list for concerts
+- Three-language content per concert; two explicit prices, PLN and EUR
 - Capacity that cannot be lowered below tickets already sold
 - Audit logging of every administrative change
-- Localised public routing — `/pl`, `/en`, `/de` — with a locale switcher
-- Deployed to Vercel (`fra1`) against Neon Postgres (`eu-central-1`)
+
+**Working — the storefront:**
+
+- Programme listing, filtered by status, sales window and date, in `/pl`,
+  `/en`, `/de`
+- Concert pages, with drafts and cancelled concerts returning a localised 404
+- Currency switching, defaulting from locale, persisted, never converted
+- Availability shown as a band — available / few left / sold out, never a count
+- A buy box bounded by both `maxPerOrder` and remaining capacity
+- A checkout form collecting one name per ticket, fully validated
+- Terms and privacy pages in three languages, behind a draft banner
 
 **Not built yet:**
 
-- **The public shop.** `/[locale]` currently renders a heading and nothing else.
-  Browsing concerts and the checkout form are Plan 03. There is no cart —
-  one concert per order, decided 27 Aug 2026.
-- **Payments.** No Stripe integration. Plan 05.
+- **Orders.** The checkout form validates and stops; no `Order` row is created,
+  and capacity never moves. Plan 04.
+- **Payments. Stripe is not connected at all.** Plan 05.
 - **Email and PDF tickets.** Plan 05.
-- **The door scanner.** Plan 07.
 - **Invitations, promo codes, refunds.** Plan 06.
+- **The door scanner** — `/admin/scan` 404s. Plan 07.
+- **Real legal text.** Both pages are marked drafts.
+- **Concert images.** `Event.imageUrl` exists but has no upload path, so every
+  card shows a fallback.
 
-So: the back-office is real and usable, and the storefront is a placeholder.
+So: a visitor can browse and reach a validated form, and nothing can yet be
+bought. `plan/03-manual-test.md` is the click-through checklist.
 
 Current state, in detail: [`plan/STATUS.md`](plan/STATUS.md).
 
@@ -226,7 +237,7 @@ plan/                      design documents and executable plans
 
 ## Testing
 
-114 tests across 19 files, run sequentially against a real Postgres database
+185 tests across 24 files, run sequentially against a real Postgres database
 (`km_test`, created by the Docker init script) rather than against mocks.
 
 ```bash
