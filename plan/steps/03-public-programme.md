@@ -110,7 +110,7 @@ Three things the rest of the plan assumes and the repository does not yet have.
 **Files:**
 - Modify: `package.json`, `prisma/seed.ts`
 
-- [ ] **Step 1: Install the form dependencies**
+- [x] **Step 1: Install the form dependencies**
 
 ```bash
 pnpm add react-hook-form @hookform/resolvers
@@ -124,7 +124,7 @@ interface:
 pnpm list @hookform/resolvers zod
 ```
 
-- [ ] **Step 2: Decide the component-testing question**
+- [x] **Step 2: Decide the component-testing question**
 
 The plan tests **pure functions**, not rendered components: availability bands,
 quantity bounds, date formatting and the checkout schema all become plain
@@ -138,7 +138,7 @@ a change to the test architecture and should be its own decision, not a
 side-effect of this plan. If you want it, do it here and widen the glob to
 `.test.tsx` — otherwise keep the logic extractable and out of the JSX.
 
-- [ ] **Step 3: Extend the seed with the states the plan verifies**
+- [x] **Step 3: Extend the seed with the states the plan verifies**
 
 The current seed creates three concerts, all `ON_SALE`, all with dates in
 **August 2026 — already in the past** — with no `salesOpenAt`/`salesCloseAt` and
@@ -190,39 +190,39 @@ fresh — an executor in Plan 05 reading the old text will build the wrong thing
 **Files:** `../03-purchase-flow.md`, `../05-admin-and-scanner.md`,
 `../06-i18n-email-pdf.md`, `../07-security-and-testing.md`, `../01-architecture.md`
 
-- [ ] **Step 1: The checkout payload**
+- [x] **Step 1: The checkout payload**
 
 `03-purchase-flow.md` describes the pre-decision payload. Add `attendeeNames`,
 and state the invariant: **non-null for every ticket of a `PURCHASE` order,
 optional for `INVITATION`**, which is why `Ticket.holderName` stays nullable.
 
-- [ ] **Step 2: The PDF**
+- [x] **Step 2: The PDF**
 
 `06-i18n-email-pdf.md` says the ticket shows the holder's name "when supplied".
 It is now always supplied for purchases. Note the layout consequence: the name
 goes into a fixed-width `pdf-lib` layout, so it needs a length cap and must
 survive latin-ext characters.
 
-- [ ] **Step 3: The scanner**
+- [x] **Step 3: The scanner**
 
 `05-admin-and-scanner.md` lists five scan states, none showing a name — yet
 "the door scanner can show a name to check against" is the justification for the
 whole decision. Add the name to the success state.
 
-- [ ] **Step 4: Retention**
+- [x] **Step 4: Retention**
 
 `07-security-and-testing.md` describes the personal data held as buyer details
 only, and its retention job anonymises "buyer PII on orders". `Ticket.holderName`
 is **not** on an order and would survive that job. Correct both.
 
-- [ ] **Step 5: The checkout URL**
+- [x] **Step 5: The checkout URL**
 
 `01-architecture.md` specifies `[locale]/checkout/`. This plan uses
 `[locale]/koncert/[slug]/zamowienie/`, because with one concert per order the
 form belongs under the concert. Amend the architecture document so Plans 04–05
 are written against the real path.
 
-- [ ] **Step 6: Note the numbering trap**
+- [x] **Step 6: Note the numbering trap**
 
 `01-foundations.md`'s closing notes were written under the old plan numbering:
 its "Plan 03" means the inventory plan, now **Plan 04**. So `updateEvent`
@@ -241,7 +241,7 @@ Also hand forward the still-open question of **hold duration by venue size**
 - Create: `src/lib/shared/public-event.ts` (types), `src/lib/server/public-events.ts`
 - Create: `tests/lib/server/public-events.test.ts`
 
-- [ ] **Step 1: Types in `shared/`, not `server/`**
+- [x] **Step 1: Types in `shared/`, not `server/`**
 
 `PublicEvent` and `AvailabilityBand` are needed by components, which may not
 import from `@/lib/server/*`. Putting them in `server/` fails `pnpm lint`.
@@ -262,7 +262,7 @@ notPurchasableReason   // 'notYetOpen' | 'closed' | 'soldOut' | 'past' | null
 `notPurchasableReason` is computed server-side so each of the four states gets
 its own message without three pages re-deriving the rules.
 
-- [ ] **Step 2: Write the tests first**
+- [x] **Step 2: Write the tests first**
 
 | Case | Expected |
 |---|---|
@@ -287,7 +287,7 @@ pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/public-events.test.
 
 Expected: failures. The module does not exist.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```
 purchasable =
@@ -305,7 +305,7 @@ future event has several, sum `soldCount`/`heldCount` and take the lowest
 `maxPerOrder`. Ignoring `active` would render a working buy box that always
 fails at checkout.
 
-- [ ] **Step 4: Green**
+- [x] **Step 4: Green**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/public-events.test.ts
@@ -319,7 +319,7 @@ pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/public-events.test.
 - Modify: `src/lib/shared/money.ts`, `tests/lib/shared/money.test.ts`
 - Create: `src/components/CurrencySwitcher.tsx`
 
-- [ ] **Step 1: Extend `money.ts` — do not create `currency.ts`**
+- [x] **Step 1: Extend `money.ts` — do not create `currency.ts`**
 
 `money.ts` already exports `CURRENCIES` and `type Currency`, and already imports
 `Locale`. A second module would create a structurally identical but distinct
@@ -329,7 +329,7 @@ Add `currencyForLocale(locale): Currency` — `pl → PLN`, `en → EUR`, `de �
 with an unknown or absent preference falling back to the locale default rather
 than throwing.
 
-- [ ] **Step 2: The switcher**
+- [x] **Step 2: The switcher**
 
 A Client Component writing a `km_currency` cookie, read server-side so the first
 paint is correct.
@@ -338,7 +338,7 @@ This is what makes the shop dynamic, and that is accepted deliberately — see t
 architecture note at the top. Do not try to keep both the cookie and static
 prerendering; they are mutually exclusive.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/lib/shared/money.test.ts
@@ -361,14 +361,14 @@ placeholder legal copy — in three languages.
 `tests/i18n/messages.test.ts` fails on any key missing from any locale, so this
 blocks four tasks at once if left implicit.
 
-- [ ] **Step 1: Add every key, in all three locales, before building the UI**
+- [x] **Step 1: Add every key, in all three locales, before building the UI**
 
-- [ ] **Step 2: Decide who writes DE and EN**
+- [x] **Step 2: Decide who writes DE and EN**
 
 Polish is the source language and the team's own. German and English placeholder
 copy is fine for the build, but note where a native speaker still has to pass.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/i18n/messages.test.ts
@@ -383,7 +383,7 @@ pnpm exec dotenv -e .env.test -- vitest run tests/i18n/messages.test.ts
 - Create: `src/components/EventCard.tsx`
 - Create: `src/lib/shared/format.ts` + `tests/lib/shared/format.test.ts`
 
-- [ ] **Step 1: Extract date formatting into a pure function**
+- [x] **Step 1: Extract date formatting into a pure function**
 
 `formatConcertDate(date, locale)` in `shared/`, using `BCP47[locale]` and
 `TIMEZONE` from `src/lib/shared/locale.ts`. Formatting with the server's zone
@@ -391,19 +391,19 @@ rather than `Europe/Warsaw` is an hour out for half the year and correct for the
 other half — the worst kind of bug, and the reason this is unit-tested rather
 than eyeballed.
 
-- [ ] **Step 2: Render the list**
+- [x] **Step 2: Render the list**
 
 Server Component. `setRequestLocale(locale)` **before** `getTranslations`.
 
 Each card: date and time, venue, title, performers, price in the active
 currency, availability band.
 
-- [ ] **Step 3: Empty state**
+- [x] **Step 3: Empty state**
 
 No concerts on sale is the normal state for eleven months a year, not an error.
 Real copy, all three languages.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/lib/shared/format.test.ts
@@ -421,13 +421,13 @@ Then open `/pl`, `/en`, `/de` — translated titles, correct dates, past and
 - Create: `src/app/(shop)/[locale]/not-found.tsx`
 - Create: `tests/app/shop/concert-detail.test.ts` *(server-side logic only)*
 
-- [ ] **Step 1: The route**
+- [x] **Step 1: The route**
 
 The segment stays Polish (`/koncert/`) in all three locales. Translating route
 segments triples the routing surface and breaks any link the Wix site has
 already published.
 
-- [ ] **Step 2: A localised 404**
+- [x] **Step 2: A localised 404**
 
 There is **no `not-found.tsx` anywhere in the app**, and `(shop)` and `(admin)`
 are two separate root layouts — so an unhandled 404 renders Next's built-in
@@ -438,7 +438,7 @@ Unknown slug, `DRAFT` and `CANCELLED` must all `notFound()`. A draft concert
 reachable by guessing its slug is a real leak — programme changes are sometimes
 embargoed.
 
-- [ ] **Step 3: Metadata**
+- [x] **Step 3: Metadata**
 
 `generateMetadata` with the translated title and description, and
 `alternates.languages` for the other two locales.
@@ -447,7 +447,7 @@ This needs `metadataBase` to emit absolute URLs. Set it from
 `NEXT_PUBLIC_SITE_URL`, which is `https://tickets-km.vercel.app` until launch —
 **not** `bilety.krzyzowa-music.eu`, which `README.md` still advertises.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/app/shop/concert-detail.test.ts
@@ -462,7 +462,7 @@ pnpm exec dotenv -e .env.test -- vitest run tests/app/shop/concert-detail.test.t
 - Modify: `src/lib/shared/public-event.ts`
 - Create: `tests/lib/shared/availability.test.ts`
 
-- [ ] **Step 1: Bands as a pure function**
+- [x] **Step 1: Bands as a pure function**
 
 `availabilityBand(available, capacity)`:
 
@@ -476,7 +476,7 @@ pnpm exec dotenv -e .env.test -- vitest run tests/app/shop/concert-detail.test.t
 and "3 left" invites a stampede for a concert that then oversells under
 contention.
 
-- [ ] **Step 2: Quantity bounds as a pure function**
+- [x] **Step 2: Quantity bounds as a pure function**
 
 `quantityBounds(maxPerOrder, available)` → `min` of the two. `maxPerOrder` is
 policy; `available` is physics.
@@ -485,12 +485,12 @@ The bound is a UI convenience. Plan 04 re-checks transactionally at order
 creation, because between render and submit the concert can sell out. **Never
 treat a client-side bound as an inventory guarantee.**
 
-- [ ] **Step 3: The four not-purchasable states**
+- [x] **Step 3: The four not-purchasable states**
 
 Each gets its own message from `notPurchasableReason`, not a disabled button:
 not yet open (with the date), closed, sold out, past.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/lib/shared/availability.test.ts
@@ -507,7 +507,7 @@ unlinked "I accept the terms" checkbox is worth nothing.
 - Create: `src/app/(shop)/[locale]/regulamin/page.tsx`,
   `src/app/(shop)/[locale]/prywatnosc/page.tsx`
 
-- [ ] **Step 1: Structure now, final text later**
+- [x] **Step 1: Structure now, final text later**
 
 The wording is the festival's lawyer's job. Build the pages with placeholder
 copy clearly marked as such.
@@ -516,7 +516,7 @@ Stripe onboarding asks for these URLs, and selling to Polish consumers without a
 `regulamin` is a legal problem — so the pages existing matters before the text
 is final.
 
-- [ ] **Step 2: Record what the privacy policy must eventually cover**
+- [x] **Step 2: Record what the privacy policy must eventually cover**
 
 Given name-per-ticket, it now covers personal data of people who are **not** the
 buyer. Task 1 Step 4 corrects `07-security-and-testing.md`; this is where the
@@ -534,7 +534,7 @@ The largest task, and the one the naming decision reshaped.
   `src/components/CheckoutForm.tsx`
 - Create: `tests/lib/shared/checkout-schema.test.ts`
 
-- [ ] **Step 1: Define how quantity reaches this route**
+- [x] **Step 1: Define how quantity reaches this route**
 
 The buy box is on the concert page; the form is on a child route. The contract:
 **`?q=N` in the URL**.
@@ -546,7 +546,7 @@ so, rather than erroring).
 
 Without this, `attendeeNames.length === quantity` has no server-side referent.
 
-- [ ] **Step 2: The schema — field names must match `Order`**
+- [x] **Step 2: The schema — field names must match `Order`**
 
 In `shared/`, because Plan 04's server action validates with the same schema.
 The first draft used names that did not exist on the table; these do:
@@ -569,17 +569,17 @@ Conditional invoice fields use `superRefine` or a discriminated union — option
 fields that become required are a classic source of forms that silently accept
 nothing.
 
-- [ ] **Step 3: The form**
+- [x] **Step 3: The form**
 
 `react-hook-form` with the zod resolver. Changing quantity adds or removes name
 fields; **existing entries must survive the change.** A buyer who types four
 names, corrects the quantity to five and loses all four will not try again.
 
-- [ ] **Step 4: Errors in the buyer's language**
+- [x] **Step 4: Errors in the buyer's language**
 
 Messages come from the catalogues added in Task 4, not hardcoded English.
 
-- [ ] **Step 5: Submission is a stub**
+- [x] **Step 5: Submission is a stub**
 
 On valid submit, log and show a placeholder. **Do not create an `Order`.**
 
@@ -587,7 +587,7 @@ On valid submit, log and show a placeholder. **Do not create an `Order`.**
 // PLAN-04: replace with createOrder() — see steps/04-inventory.md
 ```
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/lib/shared/checkout-schema.test.ts
@@ -604,12 +604,12 @@ names filled (rejected); tick invoice (fields appear, required); tamper with
 The terms and privacy pages currently have no route into them except a checkout
 checkbox, and the shop should read as continuous with the Wix site.
 
-- [ ] **Step 1: A footer** on every shop page, linking terms, privacy and back
+- [x] **Step 1: A footer** on every shop page, linking terms, privacy and back
   to `krzyzowa-music.eu`.
-- [ ] **Step 2: `robots.txt`** — decide whether to allow indexing before launch.
+- [x] **Step 2: `robots.txt`** — decide whether to allow indexing before launch.
   A test catalogue with placeholder legal text on a public URL probably should
   not be indexed yet.
-- [ ] **Step 3: Concert images.** `Event.imageUrl` exists with no upload path.
+- [x] **Step 3: Concert images.** `Event.imageUrl` exists with no upload path.
   Render it when present with a sensible fallback; decide in Plan 04 whether
   admins paste URLs or upload files. This is the release people actually look
   at, so it should not ship with empty cards.
@@ -620,7 +620,7 @@ checkbox, and the shop should read as continuous with the Wix site.
 
 Most buyers arrive from a phone, often from a link on the Wix site.
 
-- [ ] **Step 1: Widths — including 320px**
+- [x] **Step 1: Widths — including 320px**
 
 `10-design-system.md` names the real failure case: the word
 `Kammermusikfestival` at **320px**. Check 320, 360, 768 and 1280.
@@ -630,18 +630,18 @@ Apply the documented tokens rather than inventing values: `--measure-page`
 `--measure-form` (800px) for checkout. The listing goes from a grid to a
 **stacked list** — explicitly not a horizontally scrolling carousel. No shadows.
 
-- [ ] **Step 2: Touch and iOS**
+- [x] **Step 2: Touch and iOS**
 
 48px minimum touch targets; inputs at `font-size: 1rem` or iOS zooms on focus.
 The quantity selector and the name fields break first at narrow widths.
 
-- [ ] **Step 3: Keyboard and screen reader**
+- [x] **Step 3: Keyboard and screen reader**
 
 Tab the whole flow. Every field labelled; errors wired with `aria-describedby`
 and `aria-invalid`; the availability badge not colour-only — "sold out" must
 survive being read aloud or seen by someone colour-blind.
 
-- [ ] **Step 4: Polish diacritics**
+- [x] **Step 4: Polish diacritics**
 
 `ł ą ę ś ć ż ź ó ń` in every weight used. Plan 01 verified the `latin-ext`
 subset is present; this checks it is actually applied.
@@ -650,7 +650,7 @@ subset is present; this checks it is actually applied.
 
 ## Task 12: Full verification
 
-- [ ] **Step 1: The database must be running**
+- [x] **Step 1: The database must be running**
 
 ```bash
 docker compose up -d
@@ -659,7 +659,7 @@ docker compose up -d
 New in this plan: `next build` now prerenders pages that query the database, so
 the build fails without one. It did not before, because no page touched it.
 
-- [ ] **Step 2: Clean-tree gate**
+- [x] **Step 2: Clean-tree gate**
 
 ```bash
 rm -rf .next next-env.d.ts tsconfig.tsbuildinfo
@@ -669,7 +669,7 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 `pnpm lint` matters more than usual here — it is what catches a component
 importing from `@/lib/server/*`.
 
-- [ ] **Step 3: Twice**
+- [x] **Step 3: Twice**
 
 ```bash
 pnpm test && pnpm test
@@ -678,7 +678,7 @@ pnpm test && pnpm test
 This plan adds tests asserting exact row counts against a shared database.
 Ordering bugs appear only on the second run.
 
-- [ ] **Step 4: Confirm the build output — and the changed expectation**
+- [x] **Step 4: Confirm the build output — and the changed expectation**
 
 The shop routes now render **dynamically (`ƒ`)**, not as static/SSG. That is the
 intended consequence of live availability and the currency cookie.
@@ -697,30 +697,34 @@ git commit -m "feat: public programme, concert pages and checkout form"
 
 ## Definition of done
 
-- [ ] Programme lists `ON_SALE`, `SOLD_OUT` and `CLOSED` concerts, future only, by date
-- [ ] `DRAFT` and `CANCELLED` 404 by direct slug, via a localised `not-found`
-- [ ] Past concerts disappear from the listing
-- [ ] All three locales render with translated content and correct `lang`
-- [ ] Dates display in Warsaw local time, in the locale's format, unit-tested
-- [ ] Both currencies display, defaulting from locale, switchable, persisted
-- [ ] No FX conversion anywhere
-- [ ] Availability shows as a band, never an exact count
-- [ ] Quantity bounded by `maxPerOrder` **and** remaining capacity
-- [ ] `?q=` re-validated and clamped server-side
-- [ ] All four not-purchasable states have their own message
-- [ ] An inactive `TicketType` never renders a working buy box
-- [ ] Exactly one name field per ticket; quantity changes preserve typed entries
-- [ ] Schema field names match the `Order` columns they will populate
-- [ ] Invoice fields required only when invoicing is requested
-- [ ] Validation errors in the buyer's language
-- [ ] Terms and privacy pages exist in three languages, linked from footer and form
-- [ ] Usable at 320px and by keyboard
-- [ ] Design-system measures and touch targets applied
-- [ ] `pnpm lint` green — no component imports `@/lib/server/*`
-- [ ] Clean-tree gate green; suite green twice
-- [ ] Design documents corrected for name-per-ticket (Task 1)
-- [ ] `STATUS.md` updated: the shop is dynamic, not prerendered
-- [ ] **No `Order` row is created anywhere in this plan**
+- [x] Programme lists `ON_SALE`, `SOLD_OUT` and `CLOSED` concerts, future only, by date
+- [x] `DRAFT` and `CANCELLED` 404 by direct slug, via a localised `not-found`
+- [x] Past concerts disappear from the listing
+- [x] All three locales render with translated content and correct `lang`
+- [x] Dates display in Warsaw local time, in the locale's format, unit-tested
+- [x] Both currencies display, defaulting from locale, switchable, persisted
+- [x] No FX conversion anywhere
+- [x] Availability shows as a band, never an exact count
+- [x] Quantity bounded by `maxPerOrder` **and** remaining capacity
+- [x] `?q=` re-validated and clamped server-side
+- [x] All four not-purchasable states have their own message
+- [x] An inactive `TicketType` never renders a working buy box
+- [x] Exactly one name field per ticket; quantity changes preserve typed entries
+- [x] Schema field names match the `Order` columns they will populate
+- [x] Invoice fields required only when invoicing is requested
+- [x] Validation errors in the buyer's language
+- [x] Terms and privacy pages exist in three languages, linked from footer and form
+- [ ] Usable at 320px and by keyboard — **owner check.** The mechanisms are
+      verified (`hyphens: auto` and `overflow-wrap` in the served CSS, `lang`
+      set per locale, 48px targets, `text-base` inputs, labels/`aria-invalid`/
+      `aria-describedby` wired), but the rendering itself needs a real phone.
+- [x] Design-system measures and touch targets applied *(measures and 48px
+      targets in the markup; visual acceptance is the owner's)*
+- [x] `pnpm lint` green — no component imports `@/lib/server/*`
+- [x] Clean-tree gate green; suite green twice
+- [x] Design documents corrected for name-per-ticket (Task 1)
+- [x] `STATUS.md` updated: the shop is dynamic, not prerendered
+- [x] **No `Order` row is created anywhere in this plan**
 
 ---
 

@@ -1,18 +1,31 @@
-# Status — 27 August 2026
+# Status — 30 August 2026
 
 Where the project stands, for whoever picks it up next. Update this at the end
 of a working session; it is the fastest way back into context.
 
 ## Done
 
-**Plan 01 — Foundations: complete.** All 16 tasks. 114 tests across 19 files,
-green from a clean tree, CI green on GitHub. (106 at the end of Plan 01; the
-extra 8 cover the password reset added in Plan 02, Task 6a.)
+**Plan 01 — Foundations: complete.** All 16 tasks. (114 tests at the time; the
+suite is now 185 across 24 files after Plan 03.)
 
 The application runs locally in full: `pnpm dev`, then log in at
 `/admin/login` as `admin@krzyzowa-music.eu` / `DevPassword123!` and create a
 concert with Polish, English and German content, prices in PLN and EUR, and a
 capacity that cannot be lowered below tickets already sold.
+
+**Plan 03 — Public programme: tasks 0–12 done**, pending the owner's visual
+acceptance. 185 tests across 24 files, green twice from a clean tree.
+
+The demo walks end to end: programme listing → concert page → buy box → order
+form, in three languages and two currencies, on `feat/plan-03-public-programme`.
+
+- Public queries filter by status, sales window, past dates and `TicketType.active`
+- Currency defaults from locale, switchable, cookie-persisted, never converted
+- Concert pages 404 for unknown, `DRAFT`, `CANCELLED` and past slugs
+- Checkout form collects one name per ticket; `?q=` re-clamped server-side
+- Terms and privacy pages in three languages, linked from a footer
+- `robots.txt` blocks indexing until launch
+- **No `Order` is created anywhere** — that is Plan 04
 
 **Plan 02 — Deployment: tasks 1–6 done, including 6a.**
 
@@ -27,9 +40,20 @@ capacity that cannot be lowered below tickets already sold.
 
 ## Next
 
-**Next up is writing and executing Plan 03 (public programme).** Plan 02's
-remaining tasks are all deferred to launch. For reference, the two production
-accounts are:
+**Next up: the owner's look at the demo, then Plan 04 (inventory).**
+
+Run `pnpm dev` and open <http://localhost:3000/pl>. Two things need a human:
+the 320px rendering (the mechanisms are verified, the appearance is not) and
+whether the design is what the festival wants. Everything else in Plan 03's
+definition of done is ticked and evidenced.
+
+**Plan 04 is blocked** on one unanswered question: hold duration by venue size
+(see [`09-open-questions.md`](09-open-questions.md)). A flat 30 minutes lets 300
+people hold every seat of a 300-seat concert while everyone else sees "sold
+out".
+
+Plan 02's remaining tasks are all deferred to launch. For reference, the two
+production accounts are:
 
 | Email | Role |
 |---|---|
@@ -75,15 +99,13 @@ and the site is on a public URL. Use `pnpm admin:create`.
   widens the RODO retention job.
 - **Stay on `tickets-km.vercel.app`** until launch.
 
-**[Plan 03 — public programme](steps/03-public-programme.md) is written**
-(27 Aug 2026) and ready to execute: 9 tasks, from public event queries through
-to the validated checkout form. It does **not** depend on Plan 02 — it can be
-built and tested entirely locally.
+**[Plan 03](steps/03-public-programme.md) was written, critiqued, rewritten and
+executed between 27 and 30 Aug 2026.** Two independent critique passes found two
+blockers, an internal contradiction and a schema mismatch *before* any code was
+written; the plan grew from 9 tasks to 13 as a result. Its **Findings log**
+records nineteen discoveries made during execution.
 
-**Critiqued and revised the same day.** Two independent passes found two
-blockers, one internal contradiction and a schema mismatch; the plan was
-rewritten from 9 tasks to 13 and now opens with a Task 0 that installs
-`react-hook-form` and extends the seed. Findings worth remembering:
+The findings worth carrying forward:
 
 - **The test setup cannot render components** — `vitest.config.mts` is
   `environment: 'node'` with `include: ['tests/**/*.test.ts']`, and there is no
@@ -93,6 +115,14 @@ rewritten from 9 tasks to 13 and now opens with a Task 0 that installs
 - **The shop stops being statically prerendered** once it queries availability
   and reads a currency cookie. That is correct for a ticketing site, but it
   changes the Plan 02 result recorded above.
+- **next-intl's `t.rich` uses tag syntax (`<terms>…</terms>`), not
+  `{placeholders}`.** Written the wrong way it fails silently — the terms
+  checkbox rendered with no links at all, and typecheck, lint and tests all
+  passed. Only reading the served HTML caught it.
+- **Zod 4's `z.uuid()` checks the RFC 4122 version and variant bits**, so a
+  hand-written `1111-1111-…` fixture is rejected.
+- **`react-hook-form`'s `watch()` blocks React Compiler.** Use
+  `useWatch({ control, name })`.
 
 ## Loose ends
 
