@@ -9,6 +9,11 @@ const db = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL! }),
 })
 
+const SEED_ORDER_REFERENCE = 'KM-0000-000001'
+// Must equal the seeded OrderItem.quantity: Task 9 asserts `released === 5`,
+// which only holds if heldCount and the item quantity agree.
+const HELD_SEED_QUANTITY = 5
+
 async function main() {
   const swidnica = await db.venue.upsert({
     where: { id: '00000000-0000-0000-0000-000000000001' },
@@ -193,6 +198,20 @@ async function main() {
       status: 'ON_SALE',
       ...copy('Koncert miniony', 'Vergangenes Konzert', 'Past concert', 'termin już minął'),
     },
+    {
+      // Plan 04: carries a stale PENDING hold so `pnpm holds:sweep` has
+      // something to sweep on a freshly seeded database, and so
+      // updateEvent's "refuse a price change while held" branch can be
+      // smoke-tested by hand. The matching Order is created below the loop.
+      slug: 'test-w-rezerwacji',
+      venueId: krzyzowa.id,
+      capacity: 100,
+      startsAt: inDays(80),
+      pricePln: 5000,
+      priceEur: 1200,
+      status: 'ON_SALE',
+      ...copy('Koncert z rezerwacją', 'Konzert mit Reservierung', 'Concert with a hold', 'wygasła rezerwacja'),
+    },
   ]
 
   for (const c of concerts) {
@@ -229,6 +248,65 @@ async function main() {
     })
   }
 
+  // --- Plan 04: a stale PENDING hold on `test-w-rezerwacji` -----------------
+  //
+  // heldCount is set by an explicit updateMany rather than on the nested
+  // ticketTypes.create above: the event upsert's `update` branch deliberately
+  // leaves nested creates alone, so a value set only in `create` would revert
+  // to 0 on the second seed and Task 9's `released: 5` assertion would drift
+  // between runs.
+  const heldEvent = await db.event.findUniqueOrThrow({
+    where: { slug: 'test-w-rezerwacji' },
+    select: { id: true, ticketTypes: { select: { id: true } } },
+  })
+  const heldTicketType = heldEvent.ticketTypes[0]
+
+  await db.ticketType.updateMany({
+    where: { eventId: heldEvent.id },
+    data: { heldCount: HELD_SEED_QUANTITY },
+  })
+
+  await db.order.upsert({
+    where: { reference: SEED_ORDER_REFERENCE },
+    // Nothing to refresh: re-seeding must not resurrect an order the sweep has
+    // already expired, or it would look like the sweep failed.
+    update: {},
+    create: {
+      reference: SEED_ORDER_REFERENCE,
+      // Deterministic so a manual smoke of the guarded order URL is
+      // reproducible. A real v4 UUID, because Zod 4's z.uuid() checks the
+      // version and variant bits rather than just the shape.
+      accessToken: '5eed0000-0000-4000-8000-000000000001',
+      kind: 'PURCHASE',
+      email: 'rezerwacja@example.test',
+      firstName: 'Rezerwacja',
+      lastName: 'Testowa',
+      locale: 'pl',
+      currency: 'PLN',
+      subtotal: 25000,
+      discount: 0,
+      total: 25000,
+      status: 'PENDING',
+      needsInvoice: false,
+      // Already expired, so the sweep has work to do on a fresh database.
+      holdExpiresAt: inDays(-1),
+      attendeeNames: Array.from({ length: HELD_SEED_QUANTITY }, (_, index) => ({
+        index,
+        name: `Gość ${index + 1}`,
+      })),
+      items: {
+        create: [
+          {
+            ticketTypeId: heldTicketType.id,
+            quantity: HELD_SEED_QUANTITY,
+            unitPrice: 5000,
+            currency: 'PLN',
+          },
+        ],
+      },
+    },
+  })
+
   const password = await hash('DevPassword123!', ARGON2_OPTIONS)
 
   await db.adminUser.upsert({
@@ -243,7 +321,10 @@ async function main() {
     create: { email: 'skaner@krzyzowa-music.eu', passwordHash: password, name: 'Obsługa wejścia', role: 'SCANNER' },
   })
 
-  console.log(`Seeded 2 venues, ${concerts.length} concerts, 2 admin accounts.`)
+  const orderCount = await db.order.count()
+  console.log(
+    `Seeded 2 venues, ${concerts.length} concerts, ${orderCount} orders, 2 admin accounts.`,
+  )
 }
 
 main()

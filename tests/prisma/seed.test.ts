@@ -23,8 +23,37 @@ beforeAll(async () => {
 describe('seed', () => {
   it('is idempotent', async () => {
     expect(await db.venue.count()).toBe(2)
-    expect(await db.event.count()).toBe(10)
+    expect(await db.event.count()).toBe(11)
     expect(await db.adminUser.count()).toBe(2)
+    // Seeded twice above, so this is the real idempotency assertion: the
+    // stale-hold order must be upserted, not duplicated.
+    expect(await db.order.count()).toBe(1)
+    expect(await db.orderItem.count()).toBe(1)
+  })
+
+  it('seeds a stale PENDING hold for the sweep to find', async () => {
+    const order = await db.order.findUniqueOrThrow({
+      where: { reference: 'KM-0000-000001' },
+      include: { items: true },
+    })
+
+    expect(order.status).toBe('PENDING')
+    expect(order.holdExpiresAt).not.toBeNull()
+    expect(order.holdExpiresAt!.getTime()).toBeLessThan(Date.now())
+    expect(order.items).toHaveLength(1)
+    expect(order.items[0].quantity).toBe(5)
+  })
+
+  it('keeps heldCount equal to the held order quantity across re-seeds', async () => {
+    // Invariant 2. heldCount is set by an explicit updateMany because the
+    // event upsert's update branch leaves nested creates alone — if that
+    // regressed, the second seed would leave this at 0.
+    const ticketType = await db.ticketType.findFirstOrThrow({
+      where: { event: { slug: 'test-w-rezerwacji' } },
+    })
+
+    expect(ticketType.heldCount).toBe(5)
+    expect(ticketType.soldCount).toBe(0)
   })
 
   it('stores Polish diacritics intact', async () => {
