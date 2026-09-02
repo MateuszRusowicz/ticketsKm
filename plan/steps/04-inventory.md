@@ -58,7 +58,10 @@ loaded automatically every session; this one is not.
 | 2 Sep (execution, Task 2) | Step 1 said `gen_random_uuid()` "is in the `pgcrypto` extension". It has been in **core Postgres since 13** and needs no extension. Verified on the local image: PostgreSQL 16.15, `gen_random_uuid()` returns a valid v4. | Note corrected; no `CREATE EXTENSION` needed on Neon or locally. |
 | 2 Sep (execution, Task 2) | `prisma migrate dev` hangs indefinitely in a non-interactive shell — it applies the migration, then blocks on a prompt that can never be answered, and the harness kills it (exit 144) after the work is already done. | Apply with `migrate dev`, then confirm with `prisma migrate status` and run `prisma generate` separately rather than trusting the exit code. **Trap-list candidate for `/CLAUDE.md`.** |
 | 2 Sep (execution, Task 2) | `tsx` compiles to CJS in this repo, so a throwaway probe script using **top-level `await`** fails with `Top-level await is currently not supported with the "cjs" output format`. `prisma/seed.ts` and `scripts/create-admin.ts` wrap everything in `async function main()` for exactly this reason. | Task 9's CLI must use the `main()` wrapper idiom. **Trap-list candidate for `/CLAUDE.md`.** |
+| 2 Sep (execution, Task 2) | **Task 4 contradicts itself on `recordAudit`.** Its Step 3 test table asserts "if `recordAudit` throws (mock it), the Order and hold are still committed — audit is best-effort by design", while Step 4's implementation passes `tx` to `recordAudit` and its trailing note says the opposite: "an audit failure aborts the whole transaction\u2026 deliberately reverses `recordAudit`'s default best-effort behaviour". Both cannot hold. | Flagged at Task 2; **to be resolved when Task 4 is executed.** The implementation note is the better argument — for an order create, the audit row is the paper trail, and silently swallowing a failure hides it. Plan is to keep `tx` and rewrite the test row to assert the transaction *rolls back* when the audit write fails. |
 | 2 Sep (critique) | Original Task 2 verification snippet used `SELECT nextval("order_reference_seq")` — double quotes are an identifier in Postgres; `42703`. Measured. The Task 2 Step 3 implementation used single quotes correctly; only the verification was wrong. Secondary: `tsx -e` with `import("@/generated/prisma/client")` does not reliably resolve tsconfig paths. | Verification switched to a relative-path `tsx -e` matching the `prisma/seed.ts` and `scripts/create-admin.ts` idiom. |
+| 2 Sep (execution, Task 3) | **Negative control run on `holdCapacity` (not required by the plan until Task 10, done here because it is cheap).** With `AND tt."soldCount" + tt."heldCount" + $1 <= e.capacity` deleted, 4 of 11 tests fail — including the stale-capacity race and the last-seat boundary. Restored, all 11 pass. | Task 3's tests are genuine evidence, in contrast to the `db.ts` pool test which was shown to be decoration. Recorded so Task 10's control has a precedent to match. |
+| 2 Sep (execution, Task 3) | The Task 3 test fixture needed a `Venue`, and `Venue` has **no `slug` field and no unique key other than `id`**, plus a required `defaultCapacity`. An upsert keyed on `slug` fails at runtime. | Fixture uses find-or-create on `name`. Task 10's `makeEvent` helper must do the same — it is specified in the plan as an upsert-style helper and would hit this. |
 | 2 Sep (critique) | Original Task 2's overflow test called `setval(..., 999999)` on a shared sequence. `TRUNCATE ... RESTART IDENTITY CASCADE` does **not** reset a standalone sequence — measured — so the sequence stayed at 999999 for the rest of the run and every subsequent `createOrder` threw `OrderReferenceOverflow`, deterministically, looking like an oversell bug. Precisely the ordering trap Global Constraints warned against. | Overflow tested against a pure function `formatOrderReference(seq, year)` with an injected `seq`. The sequence itself is added to every `TRUNCATE ... RESTART IDENTITY` reset with an explicit `ALTER SEQUENCE "order_reference_seq" RESTART`. |
 | 2 Sep (critique) | Original Task 9 CLI parameterised `db` but the target module still starts with `import 'server-only'`, which throws under `tsx`. `scripts/create-admin.ts` and `prisma/seed.ts` import *nothing* from `src/lib/server/` — that is the documented pattern in `/CLAUDE.md`. | Task 9 split: pure sweep logic goes in `src/lib/shared/holds-sweep.ts`, the `server-only` wrapper in `src/lib/server/sweep-holds.ts` binds the singleton, the CLI (Task 9) constructs its own client and calls the shared function. No duplication. |
 | 2 Sep (critique) | Original Task 6's action called `flatten(parsed.error)` — never defined or imported. Zod 4 removed `ZodError.flatten()` in favour of `z.flattenError()`. Original Step 3 wrote `React.useActionState` but the component imports named hooks only. And the test table expected `{ ok: true, reference }` while the action `redirect(...)`s (which throws). | Rewritten: `z.flattenError()` used verbatim, `useActionState` imported by name, tests assert on the thrown `REDIRECT:...` string, following `tests/app/admin/events-action.test.ts`. |
@@ -471,7 +474,7 @@ Import path is relative (`./src/generated/prisma/client`) not aliased —
 `tsx -e` does not reliably resolve `@/` paths, and this matches
 `prisma/seed.ts` and `scripts/create-admin.ts`.
 
-- [ ] **Step 3: Write the tests first — pure formatter, then DB-bound generator**
+- [x] **Step 3: Write the tests first — pure formatter, then DB-bound generator**
 
 `tests/lib/shared/order-reference.test.ts` (pure — no database):
 
@@ -504,7 +507,7 @@ pnpm exec dotenv -e .env.test -- vitest run tests/lib/shared/order-reference.tes
 
 Expected: failures. Neither module exists.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 Pure formatter in `src/lib/shared/order-reference.ts`:
 
@@ -552,7 +555,7 @@ violation branch. This is the whole reason for choosing a sequence over
 transaction would work in isolation but starve the pool inside one. The
 constraint is captured by the type.
 
-- [ ] **Step 5: Green**
+- [x] **Step 5: Green**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/lib/shared/order-reference.test.ts tests/lib/server/order-reference.test.ts
@@ -560,7 +563,7 @@ pnpm exec dotenv -e .env.test -- vitest run tests/lib/shared/order-reference.tes
 
 Expected: all cases pass.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
@@ -571,7 +574,7 @@ Expected: pass. Prisma schema tests still green with the new columns.
 
 ---
 
-- [ ] **Step 6: Extend the seed with the states this plan verifies** *(moved here from Task 0 Step 4 — needs the migration above)*
+- [x] **Step 6: Extend the seed with the states this plan verifies** *(moved here from Task 0 Step 4 — needs the migration above)*
 
 Plan 03 seeded ten concerts and zero orders. Plan 04 needs an eleventh: **a
 concert carrying a pre-existing stale `PENDING` hold**, so Task 9's sweep has
@@ -654,7 +657,7 @@ no `SELECT ... FOR UPDATE` on the TicketType, no advisory locks.
 - Create: `src/lib/server/holds.ts`
 - Create: `tests/lib/server/holds.test.ts`
 
-- [ ] **Step 1: Write the tests first — single-threaded cases**
+- [x] **Step 1: Write the tests first — single-threaded cases**
 
 | Case | Expected |
 |---|---|
@@ -674,7 +677,7 @@ pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/holds.test.ts
 
 Expected: failures. `holds.ts` does not exist.
 
-- [ ] **Step 2: The JOIN'd atomic UPDATE, with an Event-row lock**
+- [x] **Step 2: The JOIN'd atomic UPDATE, with an Event-row lock**
 
 ```ts
 // src/lib/server/holds.ts
@@ -782,7 +785,7 @@ that a future multi-type event would need `holdCapacity` to SUM
 `soldCount`/`heldCount` across active types in the predicate, and the caller
 to iterate one hold per selected type.
 
-- [ ] **Step 3: Green**
+- [x] **Step 3: Green**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/holds.test.ts
@@ -790,7 +793,7 @@ pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/holds.test.ts
 
 Expected: nine cases pass.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
