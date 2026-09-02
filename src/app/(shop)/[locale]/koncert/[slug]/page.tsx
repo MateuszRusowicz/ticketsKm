@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { AvailabilityBadge } from '@/components/AvailabilityBadge'
+import { ConcertImage } from '@/components/ConcertImage'
 import { BuyBox } from '@/components/BuyBox'
 import { Link } from '@/i18n/routing'
 import { getActiveCurrency } from '@/lib/server/currency'
@@ -64,6 +65,12 @@ export default async function ConcertPage({ params }: Props) {
       </time>
 
       <h1 className="mt-1 text-3xl">{event.translation.title}</h1>
+
+      <ConcertImage
+        src={event.imageUrl}
+        alt={event.translation.title}
+        className="mt-6"
+      />
 
       <dl className="mt-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         <dt className="text-text-secondary">{t('venue')}</dt>

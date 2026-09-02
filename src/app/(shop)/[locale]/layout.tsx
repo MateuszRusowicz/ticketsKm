@@ -4,6 +4,7 @@ import { getMessages, getTranslations, setRequestLocale } from 'next-intl/server
 import { merriweather } from '@/app/fonts'
 import { CurrencySwitcher } from '@/components/CurrencySwitcher'
 import { LocaleSwitcher } from '@/components/LocaleSwitcher'
+import { SiteFooter } from '@/components/SiteFooter'
 import { getActiveCurrency } from '@/lib/server/currency'
 import { routing } from '@/i18n/routing'
 import type { ReactNode } from 'react'
@@ -49,6 +50,7 @@ export default async function LocaleLayout({
             <LocaleSwitcher />
           </header>
           {children}
+          <SiteFooter />
         </NextIntlClientProvider>
       </body>
     </html>

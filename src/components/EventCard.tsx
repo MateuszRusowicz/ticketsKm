@@ -1,5 +1,6 @@
 import { Link } from '@/i18n/routing'
 import { AvailabilityBadge } from '@/components/AvailabilityBadge'
+import { ConcertImage } from '@/components/ConcertImage'
 import { formatConcertDateTime, isoDateTime } from '@/lib/shared/format'
 import { formatMoney, type Currency } from '@/lib/shared/money'
 import { priceFor, type PublicEvent } from '@/lib/shared/public-event'
@@ -17,7 +18,10 @@ export function EventCard({
   availabilityLabel: string
 }) {
   return (
-    <article className="border-b border-border py-6">
+    <article className="grid gap-4 border-b border-border py-6 sm:grid-cols-[200px_1fr]">
+      <ConcertImage src={event.imageUrl} alt={event.translation.title} />
+
+      <div>
       <time dateTime={isoDateTime(event.startsAt)} className="text-sm text-text-secondary">
         {formatConcertDateTime(event.startsAt, locale)}
       </time>
@@ -41,6 +45,7 @@ export function EventCard({
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
         <span className="text-base">{formatMoney(priceFor(event, currency), currency, locale)}</span>
         <AvailabilityBadge band={event.band} label={availabilityLabel} />
+      </div>
       </div>
     </article>
   )

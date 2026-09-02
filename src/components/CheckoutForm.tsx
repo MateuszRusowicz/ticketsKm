@@ -77,36 +77,39 @@ export function CheckoutForm({
       <fieldset className="border-0 p-0">
         <legend className="text-xl">{t('buyerSection')}</legend>
 
-        <Field label={t('email')} hint={t('emailHint')} error={msg(errors.email?.message)}>
-          <input type="email" autoComplete="email" {...register('email')} className={INPUT} />
+        <Field name="email" label={t('email')} hint={t('emailHint')} error={msg(errors.email?.message)}>
+          {(a) => <input type="email" autoComplete="email" {...a} {...register('email')} />}
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('firstName')} error={msg(errors.firstName?.message)}>
-            <input autoComplete="given-name" {...register('firstName')} className={INPUT} />
+          <Field name="firstName" label={t('firstName')} error={msg(errors.firstName?.message)}>
+            {(a) => <input autoComplete="given-name" {...a} {...register('firstName')} />}
           </Field>
-          <Field label={t('lastName')} error={msg(errors.lastName?.message)}>
-            <input autoComplete="family-name" {...register('lastName')} className={INPUT} />
+          <Field name="lastName" label={t('lastName')} error={msg(errors.lastName?.message)}>
+            {(a) => <input autoComplete="family-name" {...a} {...register('lastName')} />}
           </Field>
         </div>
 
-        <Field label={t('phone')} error={msg(errors.phone?.message)}>
-          <input type="tel" autoComplete="tel" {...register('phone')} className={INPUT} />
+        <Field name="phone" label={t('phone')} error={msg(errors.phone?.message)}>
+          {(a) => <input type="tel" autoComplete="tel" {...a} {...register('phone')} />}
         </Field>
       </fieldset>
 
       <fieldset className="mt-8 border-0 p-0">
         <legend className="text-xl">{t('attendeesSection')}</legend>
         {errors.attendeeNames?.message && (
-          <p className="mt-2 text-sm text-danger">{msg(errors.attendeeNames.message)}</p>
+          <p role="alert" className="mt-2 text-sm text-danger">
+            {msg(errors.attendeeNames.message)}
+          </p>
         )}
         {Array.from({ length: quantity }, (_, i) => (
           <Field
             key={i}
+            name={`attendeeNames-${i}`}
             label={t('attendeeLabel', { number: i + 1 })}
             error={msg(errors.attendeeNames?.[i]?.message)}
           >
-            <input {...register(`attendeeNames.${i}` as const)} className={INPUT} />
+            {(a) => <input {...a} {...register(`attendeeNames.${i}` as const)} />}
           </Field>
         ))}
       </fieldset>
@@ -119,14 +122,14 @@ export function CheckoutForm({
 
         {needsInvoice && (
           <div className="mt-2">
-            <Field label={t('companyName')} error={msg(errors.companyName?.message)}>
-              <input {...register('companyName')} className={INPUT} />
+            <Field name="companyName" label={t('companyName')} error={msg(errors.companyName?.message)}>
+              {(a) => <input {...a} {...register('companyName')} />}
             </Field>
-            <Field label={t('nip')} error={msg(errors.nip?.message)}>
-              <input {...register('nip')} className={INPUT} />
+            <Field name="nip" label={t('nip')} error={msg(errors.nip?.message)}>
+              {(a) => <input {...a} {...register('nip')} />}
             </Field>
-            <Field label={t('invoiceAddress')} error={msg(errors.invoiceAddress?.message)}>
-              <input {...register('invoiceAddress')} className={INPUT} />
+            <Field name="invoiceAddress" label={t('invoiceAddress')} error={msg(errors.invoiceAddress?.message)}>
+              {(a) => <input {...a} {...register('invoiceAddress')} />}
             </Field>
           </div>
         )}
@@ -153,7 +156,9 @@ export function CheckoutForm({
         </span>
       </label>
       {errors.acceptedTerms?.message && (
-        <p className="text-sm text-danger">{msg(errors.acceptedTerms.message)}</p>
+        <p role="alert" className="text-sm text-danger">
+          {msg(errors.acceptedTerms.message)}
+        </p>
       )}
 
       <button
@@ -169,23 +174,64 @@ export function CheckoutForm({
 // 1rem, or iOS zooms the page when the field takes focus.
 const INPUT = 'min-h-[48px] w-full border border-border px-3 text-base'
 
+/**
+ * A labelled field with its hint and error wired to the input.
+ *
+ * The wiring is the point. A wrapping <label> alone associates the caption
+ * for a pointer user, but a screen reader still never hears the hint or the
+ * error — so a blind buyer is told "invalid entry" with no idea which rule
+ * they broke. `aria-describedby` reads both aloud, and `aria-invalid` is what
+ * makes the field announce as erroneous at all.
+ *
+ * The input is a render prop so it receives the generated ids rather than the
+ * caller having to keep two sets of strings in sync.
+ */
 function Field({
+  name,
   label,
   hint,
   error,
   children,
 }: {
+  name: string
   label: string
   hint?: string
   error?: string
-  children: React.ReactNode
+  children: (props: {
+    id: string
+    'aria-invalid': boolean | undefined
+    'aria-describedby': string | undefined
+    className: string
+  }) => React.ReactNode
 }) {
+  const id = `f-${name}`
+  const hintId = hint ? `${id}-hint` : undefined
+  const errorId = error ? `${id}-error` : undefined
+  const describedBy = [hintId, errorId].filter(Boolean).join(' ') || undefined
+
   return (
-    <label className="mt-4 block">
-      <span className="block text-sm text-text-secondary">{label}</span>
-      {hint && <span className="block text-sm text-text-secondary">{hint}</span>}
-      {children}
-      {error && <span className="mt-1 block text-sm text-danger">{error}</span>}
-    </label>
+    <div className="mt-4">
+      <label htmlFor={id} className="block text-sm text-text-secondary">
+        {label}
+      </label>
+      {hint && (
+        <p id={hintId} className="text-sm text-text-secondary">
+          {hint}
+        </p>
+      )}
+      {children({
+        id,
+        'aria-invalid': error ? true : undefined,
+        'aria-describedby': describedBy,
+        className: INPUT,
+      })}
+      {error && (
+        // role=alert so the message is announced when it appears, rather
+        // than only being found by someone already exploring the field.
+        <p id={errorId} role="alert" className="mt-1 text-sm text-danger">
+          {error}
+        </p>
+      )}
+    </div>
   )
 }
