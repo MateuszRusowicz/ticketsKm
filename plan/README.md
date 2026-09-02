@@ -26,6 +26,13 @@ paste-able prompt.
 | 09 | [Open questions](09-open-questions.md) | Blocking and non-blocking decisions still needed |
 | 10 | [Design system](10-design-system.md) | Colour, typography, spacing, components, Stripe theming |
 
+## Testing by hand
+
+[`03-manual-test.md`](03-manual-test.md) is the click-through checklist for the
+Plan 03 demo — what to try, what should happen, and what is deliberately
+missing. Written because the automated suite verifies behaviour but cannot
+judge whether the result looks right.
+
 ## Executable plans
 
 The documents above are the design. [`steps/`](steps/) holds the step-by-step
