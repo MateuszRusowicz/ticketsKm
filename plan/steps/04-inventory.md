@@ -62,7 +62,10 @@ loaded automatically every session; this one is not.
 | 2 Sep (critique) | Original Task 2 verification snippet used `SELECT nextval("order_reference_seq")` — double quotes are an identifier in Postgres; `42703`. Measured. The Task 2 Step 3 implementation used single quotes correctly; only the verification was wrong. Secondary: `tsx -e` with `import("@/generated/prisma/client")` does not reliably resolve tsconfig paths. | Verification switched to a relative-path `tsx -e` matching the `prisma/seed.ts` and `scripts/create-admin.ts` idiom. |
 | 2 Sep (execution, Task 3) | **Negative control run on `holdCapacity` (not required by the plan until Task 10, done here because it is cheap).** With `AND tt."soldCount" + tt."heldCount" + $1 <= e.capacity` deleted, 4 of 11 tests fail — including the stale-capacity race and the last-seat boundary. Restored, all 11 pass. | Task 3's tests are genuine evidence, in contrast to the `db.ts` pool test which was shown to be decoration. Recorded so Task 10's control has a precedent to match. |
 | 2 Sep (execution, Task 3) | The Task 3 test fixture needed a `Venue`, and `Venue` has **no `slug` field and no unique key other than `id`**, plus a required `defaultCapacity`. An upsert keyed on `slug` fails at runtime. | Fixture uses find-or-create on `name`. Task 10's `makeEvent` helper must do the same — it is specified in the plan as an upsert-style helper and would hit this. |
+| 2 Sep (execution, Task 4) | **Resolution of the `recordAudit` contradiction logged at Task 2**, plus a defect neither the plan nor the critiques caught. Step 2 said adding a client parameter left existing behaviour "unchanged" — but the existing behaviour is a `try/catch` that swallows failures, and swallowing inside a transaction is meaningless: a failed statement aborts the Postgres transaction (`25P02`) whether or not JS catches it, so the COMMIT fails regardless. Same class of bug as the `P2002` retry the critique removed. | `recordAudit(entry, client?)` now branches: standalone stays best-effort; transactional propagates. Step 2 rewritten, Step 3's contradictory test row corrected to assert rollback. Two tests added to `tests/lib/server/audit.test.ts`. |
 | 2 Sep (critique) | Original Task 2's overflow test called `setval(..., 999999)` on a shared sequence. `TRUNCATE ... RESTART IDENTITY CASCADE` does **not** reset a standalone sequence — measured — so the sequence stayed at 999999 for the rest of the run and every subsequent `createOrder` threw `OrderReferenceOverflow`, deterministically, looking like an oversell bug. Precisely the ordering trap Global Constraints warned against. | Overflow tested against a pure function `formatOrderReference(seq, year)` with an injected `seq`. The sequence itself is added to every `TRUNCATE ... RESTART IDENTITY` reset with an explicit `ALTER SEQUENCE "order_reference_seq" RESTART`. |
+| 2 Sep (execution, Task 4) | **A Task 4 test passed for the wrong reason.** The atomicity case mocks `recordAudit` with `mockRejectedValueOnce`, which rejects regardless of arguments — so the suite stayed green when `tx` was removed from the `recordAudit` call. It proved rollback happens, but not that the audit participates in the transaction, which is the actual design decision. | Added a second case asserting `spy.mock.calls[0][1]` is defined. Negative control now fails when `tx` is dropped. General lesson: a mock that ignores its arguments cannot verify how it was called. |
+| 2 Sep (execution, Task 4) | Negative controls run on all three `createOrder` guards. Removing the `maxPerOrder` check, disabling the dedupe, and dropping `tx` from `recordAudit` each fail exactly one test and no others. | The 25 tests are genuine evidence rather than coverage. |
 | 2 Sep (critique) | Original Task 9 CLI parameterised `db` but the target module still starts with `import 'server-only'`, which throws under `tsx`. `scripts/create-admin.ts` and `prisma/seed.ts` import *nothing* from `src/lib/server/` — that is the documented pattern in `/CLAUDE.md`. | Task 9 split: pure sweep logic goes in `src/lib/shared/holds-sweep.ts`, the `server-only` wrapper in `src/lib/server/sweep-holds.ts` binds the singleton, the CLI (Task 9) constructs its own client and calls the shared function. No duplication. |
 | 2 Sep (critique) | Original Task 6's action called `flatten(parsed.error)` — never defined or imported. Zod 4 removed `ZodError.flatten()` in favour of `z.flattenError()`. Original Step 3 wrote `React.useActionState` but the component imports named hooks only. And the test table expected `{ ok: true, reference }` while the action `redirect(...)`s (which throws). | Rewritten: `z.flattenError()` used verbatim, `useActionState` imported by name, tests assert on the thrown `REDIRECT:...` string, following `tests/app/admin/events-action.test.ts`. |
 | 2 Sep (critique) | Task 10's `makeEvent` was called with no definition. `createOrder` routes through `getPublicEvent`, which returns `null` without an `EventTranslation` for the requested locale, so the naive helper would surface as `EventNotPurchasableError('unknown')` on all 1000 attempts. | Task 10 spells out the helper: ON_SALE, future `startsAt`, one `EventTranslation` per locale, one active `TicketType`. |
@@ -810,7 +813,7 @@ pnpm typecheck && pnpm lint && \
 - Modify: `src/lib/server/audit.ts` (accept optional `Prisma.TransactionClient`)
 - Create: `tests/lib/server/orders.test.ts`
 
-- [ ] **Step 1: Add `.max(50)` to the schema**
+- [x] **Step 1: Add `.max(50)` to the schema**
 
 `src/lib/shared/checkout.ts` currently declares
 `quantity: z.number().int().positive()` — unbounded. Change to
@@ -820,22 +823,32 @@ pnpm typecheck && pnpm lint && \
 Add one test row to `tests/lib/shared/checkout-schema.test.ts`:
 `quantity: 900` is rejected with error key `quantity`.
 
-- [ ] **Step 2: `recordAudit` accepts an optional client**
+- [x] **Step 2: `recordAudit` accepts an optional client**
 
 `src/lib/server/audit.ts:15` uses the module-singleton `db`. Change signature:
 
 ```ts
 export async function recordAudit(
   entry: AuditEntry,
-  client: Prisma.TransactionClient | typeof db = db,
+  client?: Prisma.TransactionClient,
 ): Promise<void>
 ```
 
-All existing callers pass no second argument (unchanged behaviour). Task 4's
-`createOrder` passes `tx`. Test that `recordAudit` inside a rolled-back
-transaction leaves no row.
+**Behaviour differs by call style, and it must.** `recordAudit` currently
+wraps its insert in a `try/catch` that swallows failures — correct for
+standalone calls, where an audit failure must never abort a refund or an event
+change. That catch is a **lie inside a transaction**: a failed statement
+aborts the enclosing Postgres transaction (`25P02`) whether or not JavaScript
+catches it, so every later statement and the COMMIT fail anyway. Swallowing
+only converts a clear error into a baffling one at commit time. So:
 
-- [ ] **Step 3: Write the tests first**
+- no `client` → best effort, unchanged, existing callers unaffected;
+- `client` passed → errors propagate.
+
+Test both: that a rolled-back transaction leaves no audit row, and that a
+failing audit write inside a transaction rejects rather than resolving.
+
+- [x] **Step 3: Write the tests first**
 
 | Case | Expected |
 |---|---|
@@ -849,7 +862,7 @@ transaction leaves no row.
 | Dedupe on `email + ticketTypeId` when a `PENDING` unexpired order already exists | Returns the SAME `reference` and `accessToken`; no new Order; `heldCount` unchanged |
 | Dedupe misses when the existing order is EXPIRED / CANCELLED / FAILED / PAID | New order created; new reference |
 | Dedupe misses when the existing order's `holdExpiresAt < now()` (a `PENDING` past-expiry order still on the books because the sweep has not run yet) | New order created; the old one is left to the sweep — do NOT synchronously expire from `createOrder` |
-| Transactional atomicity | If `recordAudit` throws (mock it), the Order and hold are still committed — audit is best-effort by design; verified by pre-mock counting rows |
+| Transactional atomicity | If the audit write fails, the **whole transaction rolls back** — no Order, no hold, no audit row. (Corrected 2 Sep: the original row asserted the opposite, "still committed, best-effort by design", which contradicted Step 4's own implementation note and is impossible anyway — a failed statement dooms the Postgres transaction regardless of the catch.) |
 | Attendee-name ordering | Server-side assembly uses explicit indices, so submitting `attendeeNames.0`, `attendeeNames.2` (missing 1) rejects at the action layer, and stored order is `[{index:0,name},{index:1,name},…]` |
 
 ```bash
@@ -858,7 +871,7 @@ pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/orders.test.ts
 
 Expected: failures.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 ```ts
 // src/lib/server/orders.ts
@@ -1019,7 +1032,7 @@ transaction. This deliberately reverses `recordAudit`'s default "best-effort"
 behaviour: for an order-create the audit is the paper trail; a rare Postgres
 JSON serialization error is a worse failure to hide than to surface.
 
-- [ ] **Step 5: Green**
+- [x] **Step 5: Green**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/orders.test.ts
@@ -1027,7 +1040,7 @@ pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/orders.test.ts
 
 Expected: twelve cases pass.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \

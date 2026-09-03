@@ -55,7 +55,12 @@ export const checkoutSchema = z
     // Note it checks the RFC 4122 version and variant bits, not just the
     // shape — a hand-written "1111-1111-…" placeholder is rejected.
     ticketTypeId: z.uuid(),
-    quantity: z.number().int().positive(),
+    // Capped, not merely positive. clampQuantity() runs at render time only;
+    // without a bound here one crafted POST holds an entire venue for the
+    // full 30-minute window. createOrder additionally re-checks against the
+    // concert's own maxPerOrder, which is the authoritative limit — this is
+    // the blunt backstop that keeps an absurd payload from reaching it.
+    quantity: z.number().int().positive().max(50),
     locale: z.enum(LOCALES),
     currency: z.enum(CURRENCIES),
 

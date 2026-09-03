@@ -42,4 +42,37 @@ describe('recordAudit', () => {
       }),
     ).resolves.toBeUndefined()
   })
+
+  it('leaves no row when the surrounding transaction rolls back', async () => {
+    const before = await db.auditLog.count()
+
+    await expect(
+      db.$transaction(async (tx) => {
+        await recordAudit({ action: 'order.create', entityType: 'Order', entityId: 'x' }, tx)
+        throw new Error('rollback')
+      }),
+    ).rejects.toThrow('rollback')
+
+    expect(await db.auditLog.count()).toBe(before)
+  })
+
+  it('does NOT swallow errors when given a transaction client', async () => {
+    // The best-effort catch is a lie inside a transaction: a failed statement
+    // aborts the Postgres transaction (25P02) whether or not JavaScript
+    // catches it, so every later statement and the COMMIT fail anyway.
+    // Surfacing the error is the only honest option.
+    await expect(
+      db.$transaction(async (tx) => {
+        await recordAudit(
+          {
+            actorId: '00000000-0000-0000-0000-000000000000', // no such admin
+            action: 'x',
+            entityType: 'Y',
+            entityId: 'z',
+          },
+          tx,
+        )
+      }),
+    ).rejects.toThrow()
+  })
 })
