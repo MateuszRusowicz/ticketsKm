@@ -78,6 +78,8 @@ loaded automatically every session; this one is not.
 | 3 Sep (execution, Task 8) | Task 8's draft key names (`checkout.errors.*`, `order.holdingHeading`) did not match what Tasks 6 and 7 actually shipped (`checkout.*`, `order.holding.heading`). The copy had to be written in those tasks because next-intl throws on a missing key. | Step 1 rewritten to record the real shape rather than renaming working, tested code to match a draft. Also dropped the planned ICU `few` plural: the hold body states a time rather than counting seats, so the Polish plural category never arises. |
 | 3 Sep (execution, Task 9) | Task 9 Step 3 suggested the CLI would need "about 40 lines duplicating the transaction body" and then proposed a shared helper as an afterthought. Duplicating a transactional state change guarantees the two copies diverge. | The `PENDING → EXPIRED` transition now has exactly **one** implementation, `expireOrderWith(client, id, opts?)` in `src/lib/shared/holds-sweep.ts`. `src/lib/server/orders.ts`'s `expireOrder` wraps it in a transaction; the CLI passes its own client. `releaseCapacity` moved to `src/lib/shared/holds-release.ts` for the same reason, with `src/lib/server/holds.ts` re-exporting so call sites were unchanged. All 54 Task 3/4/5 tests still pass. |
 | 3 Sep (execution, Task 9) | The seed's summary line counted **all** orders in the database and printed them as though it had seeded them — so after the owner's manual browser smoke it read `2 orders` where the plan's expected output says `1`. A live dev database makes that assertion non-deterministic. | Log reworded to `Orders in database: N.`, which is what it actually measures. The seed *test* truncates first, so its `order.count() === 1` assertion is unaffected. |
+| 3 Sep (execution, Task 10) | **NEGATIVE CONTROL, recorded as Step 4 requires.** With `AND tt."soldCount" + tt."heldCount" + $1 <= e.capacity` commented out of `holdCapacity`, Test 1 against a **capacity-900** event reported **1000 of 1000 buyers succeeded** — `AssertionError: expected [ …(1000) ] to have a length of 900 but got 1000`, in 10.5s. Predicate restored: **900 succeeded, 100 rejected with `InsufficientCapacityError`, `heldCount === 900`, `soldCount === 0`, 900 PENDING orders.** All three tests green. | The harness demonstrably distinguishes a protected system from an unprotected one, so the green result is evidence rather than decoration. This is the single check that promotes the plan's done-when condition from "a test passes" to "overselling is impossible". Contrast the `db.ts` pool test (Task 0), which passed identically with its tuning removed and was therefore downgraded to a smoke test. |
+| 3 Sep (execution, Task 10) | `createOrder` read `db` directly, so the test could not point it at a larger pool. Step 3 offered a global override as the fallback; that would have leaked test wiring into the module. | Split into `createOrderWith(client, input)` plus `createOrder = (input) => createOrderWith(db, input)`, mirroring Task 9's sweep shape. `getPublicEvent` still reads through `db` — it is an outer, non-transactional read, so its pool cannot deadlock against the transaction's. |
 | 2 Sep (critique) | Task 10's `makeEvent` was called with no definition. `createOrder` routes through `getPublicEvent`, which returns `null` without an `EventTranslation` for the requested locale, so the naive helper would surface as `EventNotPurchasableError('unknown')` on all 1000 attempts. | Task 10 spells out the helper: ON_SALE, future `startsAt`, one `EventTranslation` per locale, one active `TicketType`. |
 | 2 Sep (critique) | **A genuine oversell race**: capacity is on `Event`, the original UPDATE locked only `TicketType`, and read capacity outside the transaction. Interleaving: buyer reads capacity 900 → admin `updateEvent(capacity: 896)` → buyer's UPDATE evaluates against stale 900 → `heldCount` 900 against capacity 896. The claim that `updateEvent`'s guard protected against this was wrong — that guard has the identical read-outside/write-inside race. | Task 3 rewrites `holdCapacity`: the predicate joins `Event` inside the SQL statement, and a `SELECT capacity FROM "Event" WHERE id = $1 FOR UPDATE` at the top of the transaction serialises against `updateEvent`, which also acquires the same lock (Task 5 Step 5 modifies `updateEvent`). Explicit note in Task 3 Step 2 about `EvalPlanQual` recheck bounds. |
 | 2 Sep (critique) | `checkoutSchema.quantity` is unbounded (`z.number().int().positive()`). One POST with `quantity: 900` holds an entire venue for 30 minutes — Plan 01's per-instance rate limiter does not stop a single request. `src/lib/shared/public-event.ts` literally promises "Plan 04 re-checks transactionally at order creation". | Task 4 Step 2 adds an explicit `input.quantity > view.maxPerOrder` guard throwing `QuantityAboveMaxPerOrderError`; Task 4 Step 5 adds `.max(50)` to `checkoutSchema.quantity`. Test row added. |
@@ -1873,7 +1875,7 @@ in isolation. The setup here writes through `createOrder`, so the whole
 **Files:**
 - Create: `tests/lib/server/oversell.test.ts`
 
-- [ ] **Step 1: The `makeEvent` helper — written out in full**
+- [x] **Step 1: The `makeEvent` helper — written out in full**
 
 Task 10 calls `makeEvent` with an event id assumption `createOrder` will
 respect. `createOrder` routes through `getPublicEvent`, which returns `null`
@@ -1912,7 +1914,7 @@ async function makeEvent(opts: { capacity: number; venueId: string }) {
 test — the concurrency test wants to prove capacity is the binding
 constraint, not `maxPerOrder`.
 
-- [ ] **Step 2: The `beforeEach`, written out in full**
+- [x] **Step 2: The `beforeEach`, written out in full**
 
 ```ts
 beforeEach(async () => {
@@ -1933,7 +1935,7 @@ The `ALTER SEQUENCE` matters: without it, an earlier file's writes leave
 the counter high, references still work but every assertion of
 `{ expired: 1, released: 5 }` shape becomes flaky as ordering shifts.
 
-- [ ] **Step 3: The dedicated Prisma client**
+- [x] **Step 3: The dedicated Prisma client**
 
 `db` uses Task 0 Step 6's tuned pool + `transactionOptions`, and those are
 enough for Tasks 3–7. But 1000 concurrent transactions against a pool of 10
@@ -1968,7 +1970,7 @@ oversell client, either export a `createOrderWith(client, input)` variant
 route; the `createOrder` in Task 4 becomes a `(input) =>
 createOrderWith(db, input)` thin wrapper.
 
-- [ ] **Step 4: NEGATIVE CONTROL — verify the harness distinguishes real from fake**
+- [x] **Step 4: NEGATIVE CONTROL — verify the harness distinguishes real from fake**
 
 **Before running the positive test, prove it can fail.** Temporarily edit
 `src/lib/server/holds.ts` and delete the capacity predicate:
@@ -1995,7 +1997,7 @@ protection exists or not proves nothing, and the executor's natural
 response is to tune numbers until it passes. This step is what promotes the
 oversell test from "green in CI" to "verified evidence".
 
-- [ ] **Step 5: The three tests**
+- [x] **Step 5: The three tests**
 
 **Test 1 — the headline. 900 seats, 1000 concurrent one-ticket holds.
 Exactly 900 succeed.**
@@ -2136,7 +2138,7 @@ release or the hold lost a decrement/increment, the two numbers diverge.
 Assertions scoped by `ticketTypeId` so a stray row from an earlier test
 does not corrupt the count.
 
-- [ ] **Step 6: Run — and run twice**
+- [x] **Step 6: Run — and run twice**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/oversell.test.ts
@@ -2147,7 +2149,7 @@ Expected: green both times. If the second run is red, the `TRUNCATE +
 ALTER SEQUENCE` in `beforeEach` is missing a table an earlier file writes
 to.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm test

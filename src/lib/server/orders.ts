@@ -1,5 +1,5 @@
 import 'server-only'
-import { Prisma } from '@/generated/prisma/client'
+import { Prisma, type PrismaClient } from '@/generated/prisma/client'
 import { checkoutSchema, type CheckoutInput } from '@/lib/shared/checkout'
 import { recordAudit } from './audit'
 import { db } from './db'
@@ -36,6 +36,22 @@ export type CreateOrderResult = {
 }
 
 export async function createOrder(raw: CheckoutInput): Promise<CreateOrderResult> {
+  return createOrderWith(db, raw)
+}
+
+/**
+ * The implementation, parameterised by client.
+ *
+ * `createOrder` binds the application singleton. The concurrency test binds
+ * its own client with a larger pool and longer transaction timeouts: 1000
+ * simultaneous transactions against a 10-connection pool reject with P2028
+ * before the capacity race is ever exercised, which would make a green test
+ * meaningless.
+ */
+export async function createOrderWith(
+  client: PrismaClient,
+  raw: CheckoutInput,
+): Promise<CreateOrderResult> {
   const input = checkoutSchema.parse(raw)
   const now = new Date()
 
@@ -44,7 +60,7 @@ export async function createOrder(raw: CheckoutInput): Promise<CreateOrderResult
   // so it becomes a typed error rather than a 500.
   let event: { id: string; slug: string }
   try {
-    event = await db.event.findFirstOrThrow({
+    event = await client.event.findFirstOrThrow({
       where: { ticketTypes: { some: { id: input.ticketTypeId } } },
       select: { id: true, slug: true },
     })
@@ -82,7 +98,7 @@ export async function createOrder(raw: CheckoutInput): Promise<CreateOrderResult
   // Deliberately outside the transaction: losing this race costs one extra
   // hold released at expiry, which is not a correctness problem, and holding
   // a lock across it would serialise every checkout for the same concert.
-  const existing = await db.order.findFirst({
+  const existing = await client.order.findFirst({
     where: {
       email: input.email,
       status: 'PENDING',
@@ -111,7 +127,7 @@ export async function createOrder(raw: CheckoutInput): Promise<CreateOrderResult
   // Everything inside uses `tx` — touching the `db` singleton here pins a
   // second pool connection while already holding one, which deadlocks under
   // concurrency.
-  return db.$transaction(async (tx) => {
+  return client.$transaction(async (tx) => {
     await holdCapacity({
       ticketTypeId: input.ticketTypeId,
       eventId: event.id,
