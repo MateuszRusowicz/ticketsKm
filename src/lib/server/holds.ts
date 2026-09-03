@@ -1,5 +1,10 @@
 import 'server-only'
 import type { Prisma } from '@/generated/prisma/client'
+import { HeldCountUnderflow, releaseCapacityWith } from '@/lib/shared/holds-release'
+
+// Re-exported so existing call sites keep one import. The implementation
+// lives in shared/ because the sweep CLI cannot import server-only modules.
+export { HeldCountUnderflow }
 
 /**
  * Capacity holds.
@@ -42,12 +47,6 @@ export class InvalidQuantityError extends Error {
   }
 }
 
-export class HeldCountUnderflow extends Error {
-  constructor(readonly ticketTypeId: string) {
-    super(`heldCount would go negative for ticket type ${ticketTypeId}`)
-    this.name = 'HeldCountUnderflow'
-  }
-}
 
 export async function holdCapacity(params: {
   ticketTypeId: string
@@ -120,24 +119,5 @@ export async function releaseCapacity(params: {
   quantity: number
   client: Prisma.TransactionClient
 }): Promise<void> {
-  // Deliberately no GREATEST("heldCount" - $1, 0) clamp. A double-decrement
-  // is a real bug, and the CHECK constraint added in Task 2 is how we hear
-  // about it. Clamping would silently manufacture capacity nobody paid for,
-  // and drift is the one failure on this plan's list that does not heal
-  // itself within the 30-minute hold window.
-  try {
-    await params.client.$executeRawUnsafe(
-      `UPDATE "TicketType"
-          SET "heldCount" = "heldCount" - $1,
-              "updatedAt" = now()
-        WHERE id = $2`,
-      params.quantity,
-      params.ticketTypeId,
-    )
-  } catch (e) {
-    if (e instanceof Error && String(e.message).includes('TicketType_heldCount_nonneg')) {
-      throw new HeldCountUnderflow(params.ticketTypeId)
-    }
-    throw e
-  }
+  return releaseCapacityWith(params.client, params.ticketTypeId, params.quantity)
 }

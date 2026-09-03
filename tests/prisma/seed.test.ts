@@ -25,8 +25,9 @@ describe('seed', () => {
     expect(await db.venue.count()).toBe(2)
     expect(await db.event.count()).toBe(11)
     expect(await db.adminUser.count()).toBe(2)
-    // Seeded twice above, so this is the real idempotency assertion: the
-    // stale-hold order must be upserted, not duplicated.
+    // Seeded twice above against a truncated database, so this is the real
+    // idempotency assertion: the stale-hold order must be upserted, not
+    // duplicated.
     expect(await db.order.count()).toBe(1)
     expect(await db.orderItem.count()).toBe(1)
   })

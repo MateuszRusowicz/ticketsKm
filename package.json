@@ -16,7 +16,9 @@
     "admin:reset-password": "dotenv -e .env -- tsx scripts/reset-admin-password.ts",
     "db:seed": "dotenv -e .env -- tsx prisma/seed.ts",
     "db:reset": "dotenv -e .env -- prisma migrate reset --force",
-    "vercel-build": "prisma migrate deploy && prisma generate && next build"
+    "vercel-build": "prisma migrate deploy && prisma generate && next build",
+    "holds:sweep": "dotenv -e .env -- tsx scripts/sweep-holds.ts",
+    "holds:verify": "dotenv -e .env -- tsx scripts/verify-holds.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

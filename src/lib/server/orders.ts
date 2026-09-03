@@ -4,6 +4,7 @@ import { checkoutSchema, type CheckoutInput } from '@/lib/shared/checkout'
 import { recordAudit } from './audit'
 import { db } from './db'
 import { holdCapacity, releaseCapacity } from './holds'
+import { expireOrderWith } from '@/lib/shared/holds-sweep'
 import { generateOrderReference } from './order-reference'
 import { getPublicEvent } from './public-events'
 
@@ -195,8 +196,8 @@ export async function createOrder(raw: CheckoutInput): Promise<CreateOrderResult
  * into 'alreadyTerminal' would tell the Plan 05 sweep that a live order had
  * been dealt with.
  */
-export type SkipReason = 'alreadyTerminal' | 'notYetExpired'
-export type ReleaseResult = { released: number } | { skipped: SkipReason }
+export type { ReleaseResult, SkipReason } from '@/lib/shared/holds-sweep'
+import type { ReleaseResult } from '@/lib/shared/holds-sweep'
 
 async function releaseHoldForOrder(
   orderId: string,
@@ -257,37 +258,9 @@ export async function expireOrder(
   orderId: string,
   opts?: { beforeRelease?: (client: Prisma.TransactionClient) => Promise<void> | void },
 ): Promise<ReleaseResult> {
-  return db.$transaction(async (tx) => {
-    // Claim the transition FIRST, then run the hook.
-    //
-    // The plan specified the reverse — hook, then claim — but that runs the
-    // hook for orders this call cannot expire. Plan 05 cancels a Stripe
-    // PaymentIntent in this hook, so the plan's ordering would kill the
-    // payment of an order that then stays PENDING. Claiming first means the
-    // hook only ever runs for an order we have actually transitioned, and
-    // because the claim and the hook share one transaction, a throwing hook
-    // still rolls the status change back.
-    const { claimed } = await releaseHoldForOrder(orderId, 'EXPIRED', true, tx)
-
-    if (!claimed) {
-      // Distinguish "someone got here first" from "the hold is still live",
-      // which is a race with Plan 05 extending a hold on a payment retry.
-      const order = await tx.order.findUnique({
-        where: { id: orderId },
-        select: { status: true },
-      })
-      return { skipped: order?.status === 'PENDING' ? 'notYetExpired' : 'alreadyTerminal' }
-    }
-
-    // Cancel-then-release. The reverse order would leave a window in which
-    // the seats are back on sale while Stripe would still accept the charge.
-    if (opts?.beforeRelease) await opts.beforeRelease(tx)
-
-    const released = await releaseItems(orderId, tx)
-    await recordAudit({ action: 'order.expire', entityType: 'Order', entityId: orderId }, tx)
-
-    return { released }
-  })
+  // One implementation of the transition, in shared/, so the sweep CLI runs
+  // exactly the same code path as the app.
+  return db.$transaction((tx) => expireOrderWith(tx, orderId, opts))
 }
 
 export async function failOrder(orderId: string, reason: string): Promise<ReleaseResult> {

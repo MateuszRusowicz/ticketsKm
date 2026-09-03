@@ -321,9 +321,11 @@ async function main() {
     create: { email: 'skaner@krzyzowa-music.eu', passwordHash: password, name: 'Obsługa wejścia', role: 'SCANNER' },
   })
 
+  // A live total, not a count of what this run inserted: a dev database may
+  // hold orders created by hand through the app.
   const orderCount = await db.order.count()
   console.log(
-    `Seeded 2 venues, ${concerts.length} concerts, ${orderCount} orders, 2 admin accounts.`,
+    `Seeded 2 venues, ${concerts.length} concerts, 2 admin accounts. Orders in database: ${orderCount}.`,
   )
 }
 

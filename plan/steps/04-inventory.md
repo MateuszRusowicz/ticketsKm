@@ -76,6 +76,8 @@ loaded automatically every session; this one is not.
 | 2 Sep (critique) | Original Task 6's action called `flatten(parsed.error)` — never defined or imported. Zod 4 removed `ZodError.flatten()` in favour of `z.flattenError()`. Original Step 3 wrote `React.useActionState` but the component imports named hooks only. And the test table expected `{ ok: true, reference }` while the action `redirect(...)`s (which throws). | Rewritten: `z.flattenError()` used verbatim, `useActionState` imported by name, tests assert on the thrown `REDIRECT:...` string, following `tests/app/admin/events-action.test.ts`. |
 | 3 Sep (execution, Task 8) | **Task 6's rewiring silently broke every field-level error message.** The form submits natively through `action={action}`, so react-hook-form's `handleSubmit` never runs and its resolver never fires on submit; meanwhile the component read errors only from RHF's `errors` object and ignored the server's. A buyer submitting an invalid email saw **no message at all** — the page just re-rendered. Typecheck, lint and all 275 tests stayed green, because the test setup cannot render components. | Added a `fieldError(name, clientKey)` helper that prefers the server's message key and falls back to RHF's; both come from the same Zod schema, so they share a key vocabulary. Added `validation.incomplete` for the attendee-name index gap, which the server reports and nothing rendered. **Not covered by an automated test** — `vitest.config.mts` is node-environment with no DOM — so this is verified by reading and by the owner's browser pass. |
 | 3 Sep (execution, Task 8) | Task 8's draft key names (`checkout.errors.*`, `order.holdingHeading`) did not match what Tasks 6 and 7 actually shipped (`checkout.*`, `order.holding.heading`). The copy had to be written in those tasks because next-intl throws on a missing key. | Step 1 rewritten to record the real shape rather than renaming working, tested code to match a draft. Also dropped the planned ICU `few` plural: the hold body states a time rather than counting seats, so the Polish plural category never arises. |
+| 3 Sep (execution, Task 9) | Task 9 Step 3 suggested the CLI would need "about 40 lines duplicating the transaction body" and then proposed a shared helper as an afterthought. Duplicating a transactional state change guarantees the two copies diverge. | The `PENDING → EXPIRED` transition now has exactly **one** implementation, `expireOrderWith(client, id, opts?)` in `src/lib/shared/holds-sweep.ts`. `src/lib/server/orders.ts`'s `expireOrder` wraps it in a transaction; the CLI passes its own client. `releaseCapacity` moved to `src/lib/shared/holds-release.ts` for the same reason, with `src/lib/server/holds.ts` re-exporting so call sites were unchanged. All 54 Task 3/4/5 tests still pass. |
+| 3 Sep (execution, Task 9) | The seed's summary line counted **all** orders in the database and printed them as though it had seeded them — so after the owner's manual browser smoke it read `2 orders` where the plan's expected output says `1`. A live dev database makes that assertion non-deterministic. | Log reworded to `Orders in database: N.`, which is what it actually measures. The seed *test* truncates first, so its `order.count() === 1` assertion is unaffected. |
 | 2 Sep (critique) | Task 10's `makeEvent` was called with no definition. `createOrder` routes through `getPublicEvent`, which returns `null` without an `EventTranslation` for the requested locale, so the naive helper would surface as `EventNotPurchasableError('unknown')` on all 1000 attempts. | Task 10 spells out the helper: ON_SALE, future `startsAt`, one `EventTranslation` per locale, one active `TicketType`. |
 | 2 Sep (critique) | **A genuine oversell race**: capacity is on `Event`, the original UPDATE locked only `TicketType`, and read capacity outside the transaction. Interleaving: buyer reads capacity 900 → admin `updateEvent(capacity: 896)` → buyer's UPDATE evaluates against stale 900 → `heldCount` 900 against capacity 896. The claim that `updateEvent`'s guard protected against this was wrong — that guard has the identical read-outside/write-inside race. | Task 3 rewrites `holdCapacity`: the predicate joins `Event` inside the SQL statement, and a `SELECT capacity FROM "Event" WHERE id = $1 FOR UPDATE` at the top of the transaction serialises against `updateEvent`, which also acquires the same lock (Task 5 Step 5 modifies `updateEvent`). Explicit note in Task 3 Step 2 about `EvalPlanQual` recheck bounds. |
 | 2 Sep (critique) | `checkoutSchema.quantity` is unbounded (`z.number().int().positive()`). One POST with `quantity: 900` holds an entire venue for 30 minutes — Plan 01's per-instance rate limiter does not stop a single request. `src/lib/shared/public-event.ts` literally promises "Plan 04 re-checks transactionally at order creation". | Task 4 Step 2 adds an explicit `input.quantity > view.maxPerOrder` guard throwing `QuantityAboveMaxPerOrderError`; Task 4 Step 5 adds `.max(50)` to `checkoutSchema.quantity`. Test row added. |
@@ -1694,7 +1696,7 @@ drift is the one failure that does not self-heal within 30 minutes.
 - Create: `tests/lib/server/sweep-holds.test.ts`
 - Create: `tests/lib/server/verify-holds.test.ts`
 
-- [ ] **Step 1: Write the tests first — sweep**
+- [x] **Step 1: Write the tests first — sweep**
 
 | Case | Expected |
 |---|---|
@@ -1707,7 +1709,7 @@ drift is the one failure that does not self-heal within 30 minutes.
 | Audit | One `order.expire` per expired order, actorId null, meta `{ reference }` |
 | Empty database | `{ expired: 0, released: 0 }` |
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 ```ts
 // src/lib/shared/holds-sweep.ts — pure, no server-only import
@@ -1768,7 +1770,7 @@ The `_client` parameter is unused in the server binding (it uses `db` via
 `expireOrder`), but the shared function's contract accepts one so the CLI can
 pass its own.
 
-- [ ] **Step 3: The sweep CLI**
+- [x] **Step 3: The sweep CLI**
 
 ```ts
 // scripts/sweep-holds.ts — imports NOTHING from src/lib/server/*
@@ -1807,7 +1809,7 @@ Add to `package.json`:
 "holds:verify": "dotenv -e .env -- tsx scripts/verify-holds.ts"
 ```
 
-- [ ] **Step 4: Write the tests first — verify**
+- [x] **Step 4: Write the tests first — verify**
 
 `pnpm holds:verify` reports per `TicketType`:
 
@@ -1827,12 +1829,12 @@ Tests:
   drift 3, exit 1.
 - Same, run with `--fix` → corrects, one audit entry, second run reports 0.
 
-- [ ] **Step 5: Implement `scripts/verify-holds.ts`**
+- [x] **Step 5: Implement `scripts/verify-holds.ts`**
 
 Follows the sweep CLI's structure — its own `PrismaClient`, imports
 nothing from `server/`.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/sweep-holds.test.ts tests/lib/server/verify-holds.test.ts
@@ -1851,7 +1853,7 @@ pnpm holds:verify
 Expected: after a run of the seed + sweep, `heldCount` matches the
 sum-of-PENDING calculation for every ticket type.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
