@@ -3,6 +3,7 @@ import type { Event } from '@/generated/prisma/client'
 import { Prisma } from '@/generated/prisma/client'
 import { db } from './db'
 import { recordAudit } from './audit'
+import { releaseCapacity } from './holds'
 import { eventInputSchema, type EventInput } from '@/lib/shared/schemas'
 import { LOCALES } from '@/lib/shared/locale'
 
@@ -109,7 +110,15 @@ export async function updateEvent(
   if (priceChanged && held > 0) throw new PriceChangeWhileHeldError(held)
 
   try {
+    const cancelling = input.status === 'CANCELLED' && existing.status !== 'CANCELLED'
+
     const event = await db.$transaction(async (tx) => {
+      // Same Event-row lock holdCapacity takes, for the same reason: it
+      // serialises this against in-flight checkouts, so a buyer either
+      // commits before the cancellation and gets cancelled below, or fails
+      // cleanly after it.
+      await tx.$executeRawUnsafe(`SELECT id FROM "Event" WHERE id = $1 FOR UPDATE`, id)
+
       const updated = await tx.event.update({
         where: { id },
         data: {
@@ -142,6 +151,52 @@ export async function updateEvent(
           maxPerOrder: input.maxPerOrder,
         },
       })
+
+      // Cancelling a concert must return its seats and close its orders.
+      // Without this the holds sit until expiry and — worse — the PENDING
+      // orders stay chargeable once Plan 05 lands, taking money for a
+      // concert that will not happen.
+      //
+      // Inlined rather than calling cancelOrder(): that opens its own
+      // transaction, which would nest here and write its audit entry outside
+      // this one's atomicity.
+      if (cancelling) {
+        const pending = await tx.order.findMany({
+          where: {
+            status: 'PENDING',
+            items: { some: { ticketType: { eventId: id } } },
+          },
+          select: { id: true, items: { select: { ticketTypeId: true, quantity: true } } },
+        })
+
+        for (const order of pending) {
+          const rows = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+            `UPDATE "Order" SET status = 'CANCELLED', "cancelledAt" = now()
+              WHERE id = $1 AND status = 'PENDING' RETURNING id`,
+            order.id,
+          )
+          if (rows.length === 0) continue
+
+          for (const item of order.items) {
+            await releaseCapacity({
+              ticketTypeId: item.ticketTypeId,
+              quantity: item.quantity,
+              client: tx,
+            })
+          }
+
+          await recordAudit(
+            {
+              actorId,
+              action: 'order.cancel',
+              entityType: 'Order',
+              entityId: order.id,
+              meta: { reason: 'event_cancelled', eventId: id },
+            },
+            tx,
+          )
+        }
+      }
 
       return updated
     })

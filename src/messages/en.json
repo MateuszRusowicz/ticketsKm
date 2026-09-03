@@ -52,7 +52,10 @@
     "invoiceAddress": "Address",
     "acceptedTerms": "I accept the <terms>terms of sale</terms> and the <privacy>privacy policy</privacy>.",
     "submit": "Continue to payment",
-    "stub": "The form is valid. Payment will be connected in a later stage."
+    "soldOut": "Those seats sold out while you were ordering. Please reduce the number of tickets or choose another concert.",
+    "aboveMax": "That is more tickets than one order allows.",
+    "notPurchasable": "Tickets for this concert are no longer on sale.",
+    "rateLimited": "Too many attempts. Please wait a moment and try again."
   },
   "validation": {
     "required": "This field is required.",

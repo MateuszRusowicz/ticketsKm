@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { pruneRateLimits, rateLimit } from '@/lib/server/ratelimit'
+import { __resetRateLimits, pruneRateLimits, rateLimit } from '@/lib/server/ratelimit'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -44,5 +44,16 @@ describe('rateLimit', () => {
 
     // Pruned, so a fresh window starts and the call is allowed.
     expect(rateLimit(key, 1, 60_000)).toBe(true)
+  })
+})
+
+describe('__resetRateLimits', () => {
+  it('clears an exhausted budget so tests do not poison each other', () => {
+    for (let i = 0; i < 3; i++) expect(rateLimit('reset-probe', 3, 60_000)).toBe(true)
+    expect(rateLimit('reset-probe', 3, 60_000)).toBe(false)
+
+    __resetRateLimits()
+
+    expect(rateLimit('reset-probe', 3, 60_000)).toBe(true)
   })
 })

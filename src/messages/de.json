@@ -52,7 +52,10 @@
     "invoiceAddress": "Adresse",
     "acceptedTerms": "Ich akzeptiere die <terms>Verkaufsbedingungen</terms> und die <privacy>Datenschutzerklärung</privacy>.",
     "submit": "Weiter zur Zahlung",
-    "stub": "Das Formular ist gültig. Die Zahlung wird in einem späteren Schritt angebunden."
+    "soldOut": "Leider sind die Plätze während der Bestellung ausverkauft. Bitte reduzieren Sie die Anzahl oder wählen Sie ein anderes Konzert.",
+    "aboveMax": "Die maximale Anzahl Tickets pro Bestellung wurde überschritten.",
+    "notPurchasable": "Für dieses Konzert ist kein Ticketverkauf mehr möglich.",
+    "rateLimited": "Zu viele Versuche. Bitte warten Sie einen Moment und versuchen Sie es erneut."
   },
   "validation": {
     "required": "Dieses Feld ist erforderlich.",

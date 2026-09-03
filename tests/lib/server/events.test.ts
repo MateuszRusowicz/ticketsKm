@@ -7,14 +7,16 @@ import {
   SlugTakenError,
   updateEvent,
 } from '@/lib/server/events'
+import { createOrder } from '@/lib/server/orders'
 
 let actorId: string
 let venueId: string
 
 beforeEach(async () => {
   await db.$executeRawUnsafe(`
-    TRUNCATE TABLE "AuditLog", "TicketType", "EventTranslation", "Event",
-                   "Venue", "AdminUser" RESTART IDENTITY CASCADE
+    TRUNCATE TABLE "AuditLog", "OrderItem", "Order", "TicketType",
+                   "EventTranslation", "Event", "Venue", "AdminUser"
+    RESTART IDENTITY CASCADE
   `)
   const admin = await db.adminUser.create({
     data: { email: 'a@example.com', name: 'A', role: 'ADMIN', passwordHash: 'x' },
@@ -141,5 +143,96 @@ describe('updateEvent', () => {
 
     const updated = await updateEvent(event.id, input({ capacity: 420 }), actorId)
     expect(updated.capacity).toBe(420)
+  })
+})
+
+const FUTURE = new Date(Date.now() + 60 * 86_400_000)
+
+describe('updateEvent — cancelling a concert releases its holds', () => {
+  async function onSaleEventWithHolds(orderCount: number) {
+    // startsAt must be overridden: the shared input() helper pins it to
+    // 2026-08-14, which is in the past, and getPublicEvent filters past
+    // concerts out — so createOrder would see 'unknown'.
+    const event = await createEvent(
+      input({ slug: 'do-odwolania', status: 'ON_SALE', capacity: 100, startsAt: FUTURE }),
+      actorId,
+    )
+    const ticketType = await db.ticketType.findFirstOrThrow({ where: { eventId: event.id } })
+
+    for (let i = 0; i < orderCount; i++) {
+      await createOrder({
+        ticketTypeId: ticketType.id,
+        quantity: 2,
+        locale: 'pl',
+        currency: 'PLN',
+        // Distinct buyers: same-email orders would dedupe into one.
+        email: `buyer${i}@example.test`,
+        firstName: 'Jan',
+        lastName: 'Kowalski',
+        attendeeNames: ['A', 'B'],
+        needsInvoice: false,
+        acceptedTerms: true,
+      })
+    }
+
+    return { event, ticketTypeId: ticketType.id }
+  }
+
+  it('cancels every PENDING order and returns the seats', async () => {
+    const { event, ticketTypeId } = await onSaleEventWithHolds(3)
+
+    expect(
+      (await db.ticketType.findUniqueOrThrow({ where: { id: ticketTypeId } })).heldCount,
+    ).toBe(6)
+
+    await updateEvent(
+      event.id,
+      input({ slug: 'do-odwolania', status: 'CANCELLED', capacity: 100, startsAt: FUTURE }),
+      actorId,
+    )
+
+    const orders = await db.order.findMany({ where: { items: { some: { ticketTypeId } } } })
+    expect(orders).toHaveLength(3)
+    for (const order of orders) expect(order.status).toBe('CANCELLED')
+
+    expect(
+      (await db.ticketType.findUniqueOrThrow({ where: { id: ticketTypeId } })).heldCount,
+    ).toBe(0)
+
+    const cancels = await db.auditLog.findMany({ where: { action: 'order.cancel' } })
+    expect(cancels).toHaveLength(3)
+    expect(cancels[0].meta).toMatchObject({ reason: 'event_cancelled' })
+  })
+
+  it('cancels cleanly when the concert has no outstanding holds', async () => {
+    const event = await createEvent(
+      input({ slug: 'puste-odwolanie', status: 'ON_SALE', capacity: 100, startsAt: FUTURE }),
+      actorId,
+    )
+
+    await expect(
+      updateEvent(
+        event.id,
+        input({ slug: 'puste-odwolanie', status: 'CANCELLED', capacity: 100, startsAt: FUTURE }),
+        actorId,
+      ),
+    ).resolves.toBeDefined()
+
+    expect(await db.auditLog.count({ where: { action: 'order.cancel' } })).toBe(0)
+  })
+
+  it('does not touch orders when the status change is not a cancellation', async () => {
+    const { event, ticketTypeId } = await onSaleEventWithHolds(2)
+
+    await updateEvent(
+      event.id,
+      input({ slug: 'do-odwolania', status: 'CLOSED', capacity: 100, startsAt: FUTURE }),
+      actorId,
+    )
+
+    expect(
+      (await db.ticketType.findUniqueOrThrow({ where: { id: ticketTypeId } })).heldCount,
+    ).toBe(4)
+    expect(await db.auditLog.count({ where: { action: 'order.cancel' } })).toBe(0)
   })
 })

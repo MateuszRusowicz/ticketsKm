@@ -2,10 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/server/db'
 import { InsufficientCapacityError } from '@/lib/server/holds'
 import {
+  cancelOrder,
   createOrder,
   EventNotPurchasableError,
+  expireOrder,
+  failOrder,
   HOLD_DURATION_MS,
   QuantityAboveMaxPerOrderError,
+  reclaimCapacityForOrder,
 } from '@/lib/server/orders'
 import type { CheckoutInput } from '@/lib/shared/checkout'
 
@@ -311,5 +315,145 @@ describe('createOrder — atomicity', () => {
     expect(spy.mock.calls[0][1]).toBeDefined()
 
     spy.mockRestore()
+  })
+})
+
+describe('hold-release lifecycle', () => {
+  it('cancelOrder releases the hold and records one audit entry', async () => {
+    const order = await createOrder(input(ticketTypeId, { quantity: 3 }))
+    expect(await heldCount(ticketTypeId)).toBe(3)
+
+    const result = await cancelOrder(order.orderId, 'buyer_cancelled')
+
+    expect(result).toEqual({ released: 3 })
+    expect(await heldCount(ticketTypeId)).toBe(0)
+
+    const row = await db.order.findUniqueOrThrow({ where: { id: order.orderId } })
+    expect(row.status).toBe('CANCELLED')
+    expect(row.cancelledAt).not.toBeNull()
+
+    const audits = await db.auditLog.findMany({
+      where: { entityId: order.orderId, action: 'order.cancel' },
+    })
+    expect(audits).toHaveLength(1)
+  })
+
+  it('cancelOrder is idempotent and does not double-decrement', async () => {
+    const order = await createOrder(input(ticketTypeId, { quantity: 3 }))
+
+    await cancelOrder(order.orderId, 'first')
+    const second = await cancelOrder(order.orderId, 'second')
+
+    expect(second).toEqual({ skipped: 'alreadyTerminal' })
+    expect(await heldCount(ticketTypeId)).toBe(0)
+    expect(
+      await db.auditLog.count({ where: { entityId: order.orderId, action: 'order.cancel' } }),
+    ).toBe(1)
+  })
+
+  it('releases exactly once under ten concurrent cancels', async () => {
+    const order = await createOrder(input(ticketTypeId, { quantity: 4 }))
+
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => cancelOrder(order.orderId, 'race')),
+    )
+
+    expect(results.filter((r) => 'released' in r)).toHaveLength(1)
+    expect(results.filter((r) => 'skipped' in r)).toHaveLength(9)
+    expect(await heldCount(ticketTypeId)).toBe(0)
+    expect(
+      await db.auditLog.count({ where: { entityId: order.orderId, action: 'order.cancel' } }),
+    ).toBe(1)
+  })
+
+  it('expireOrder refuses an order whose hold is still live', async () => {
+    const order = await createOrder(input(ticketTypeId, { quantity: 2 }))
+
+    const result = await expireOrder(order.orderId)
+
+    expect(result).toEqual({ skipped: 'notYetExpired' })
+    expect(await heldCount(ticketTypeId)).toBe(2)
+    expect(await db.order.findUniqueOrThrow({ where: { id: order.orderId } })).toMatchObject({
+      status: 'PENDING',
+    })
+  })
+
+  it('expireOrder releases once the hold has lapsed', async () => {
+    const order = await createOrder(input(ticketTypeId, { quantity: 2 }))
+    await db.order.update({
+      where: { id: order.orderId },
+      data: { holdExpiresAt: new Date(Date.now() - 1000) },
+    })
+
+    expect(await expireOrder(order.orderId)).toEqual({ released: 2 })
+    expect(await heldCount(ticketTypeId)).toBe(0)
+  })
+
+  it('does not run beforeRelease for an order it cannot expire', async () => {
+    // Plan 05 cancels a Stripe PaymentIntent in this hook. Running it for an
+    // order that then stays PENDING would kill a live payment.
+    const order = await createOrder(input(ticketTypeId, { quantity: 2 }))
+    const hook = vi.fn()
+
+    await expireOrder(order.orderId, { beforeRelease: hook })
+
+    expect(hook).not.toHaveBeenCalled()
+  })
+
+  it('rolls the whole expiry back when beforeRelease throws', async () => {
+    const order = await createOrder(input(ticketTypeId, { quantity: 2 }))
+    await db.order.update({
+      where: { id: order.orderId },
+      data: { holdExpiresAt: new Date(Date.now() - 1000) },
+    })
+
+    await expect(
+      expireOrder(order.orderId, {
+        beforeRelease: async () => {
+          throw new Error('stripe cancel failed')
+        },
+      }),
+    ).rejects.toThrow('stripe cancel failed')
+
+    // Seats stay held and the order stays PENDING, so the next sweep retries.
+    expect(await heldCount(ticketTypeId)).toBe(2)
+    expect(await db.order.findUniqueOrThrow({ where: { id: order.orderId } })).toMatchObject({
+      status: 'PENDING',
+    })
+  })
+
+  it('failOrder releases the hold', async () => {
+    const order = await createOrder(input(ticketTypeId, { quantity: 2 }))
+
+    expect(await failOrder(order.orderId, 'payment_failed')).toEqual({ released: 2 })
+    expect(await heldCount(ticketTypeId)).toBe(0)
+    expect(await db.order.findUniqueOrThrow({ where: { id: order.orderId } })).toMatchObject({
+      status: 'FAILED',
+    })
+  })
+
+  it('reclaimCapacityForOrder restores an expired order for Plan 05', async () => {
+    const order = await createOrder(input(ticketTypeId, { quantity: 2 }))
+    await db.order.update({
+      where: { id: order.orderId },
+      data: { holdExpiresAt: new Date(Date.now() - 1000) },
+    })
+    await expireOrder(order.orderId)
+    expect(await heldCount(ticketTypeId)).toBe(0)
+
+    await db.$transaction((tx) => reclaimCapacityForOrder(order.orderId, tx))
+
+    expect(await heldCount(ticketTypeId)).toBe(2)
+    expect(await db.order.findUniqueOrThrow({ where: { id: order.orderId } })).toMatchObject({
+      status: 'PENDING',
+    })
+  })
+
+  it('reclaimCapacityForOrder refuses an order that is not EXPIRED', async () => {
+    const order = await createOrder(input(ticketTypeId, { quantity: 2 }))
+
+    await expect(
+      db.$transaction((tx) => reclaimCapacityForOrder(order.orderId, tx)),
+    ).rejects.toThrow()
   })
 })

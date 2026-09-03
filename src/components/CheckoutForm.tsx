@@ -3,7 +3,11 @@
 import { useForm, useWatch } from 'react-hook-form'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { useTranslations } from 'next-intl'
-import { useState } from 'react'
+import { useActionState } from 'react'
+import {
+  submitCheckout,
+  type SubmitState,
+} from '@/app/(shop)/[locale]/koncert/[slug]/zamowienie/actions'
 import { checkoutSchema, type CheckoutInput } from '@/lib/shared/checkout'
 
 type Props = {
@@ -25,11 +29,15 @@ export function CheckoutForm({
 }: Props) {
   const t = useTranslations('checkout')
   const tv = useTranslations('validation')
-  const [submitted, setSubmitted] = useState(false)
+
+  // The action is the source of truth: it re-validates with the same Zod
+  // schema server-side, then redirects on success, so there is no success
+  // branch to render here.
+  const [state, action] = useActionState<SubmitState, FormData>(submitCheckout, {})
+  const formError = 'errors' in state ? state.errors._form?.[0] : undefined
 
   const {
     register,
-    handleSubmit,
     control,
     formState: { errors },
   } = useForm<CheckoutInput>({
@@ -55,20 +63,13 @@ export function CheckoutForm({
   /** Zod carries message keys, not sentences, so errors land in the buyer's language. */
   const msg = (key?: string) => (key ? tv(key as 'required') : undefined)
 
-  function onValid(values: CheckoutInput) {
-    // PLAN-04: replace with createOrder() — see steps/04-inventory.md.
-    // Deliberately creates nothing: order creation needs the transactional
-    // capacity hold and its concurrency tests, which are the next plan.
-    console.info('checkout payload', values)
-    setSubmitted(true)
-  }
-
-  if (submitted) {
-    return <p className="mt-8 border-l-4 border-accent bg-surface px-4 py-3">{t('stub')}</p>
-  }
-
   return (
-    <form onSubmit={handleSubmit(onValid)} className="mt-8 max-w-[800px]" noValidate>
+    <form action={action} className="mt-8 max-w-[800px]" noValidate>
+      {formError && (
+        <p role="alert" className="mb-6 border-l-4 border-error bg-surface px-4 py-3">
+          {t(formError as 'soldOut')}
+        </p>
+      )}
       <input type="hidden" {...register('ticketTypeId')} />
       <input type="hidden" {...register('quantity', { valueAsNumber: true })} />
       <input type="hidden" {...register('locale')} />

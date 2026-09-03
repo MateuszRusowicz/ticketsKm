@@ -66,6 +66,11 @@ loaded automatically every session; this one is not.
 | 2 Sep (critique) | Original Task 2's overflow test called `setval(..., 999999)` on a shared sequence. `TRUNCATE ... RESTART IDENTITY CASCADE` does **not** reset a standalone sequence — measured — so the sequence stayed at 999999 for the rest of the run and every subsequent `createOrder` threw `OrderReferenceOverflow`, deterministically, looking like an oversell bug. Precisely the ordering trap Global Constraints warned against. | Overflow tested against a pure function `formatOrderReference(seq, year)` with an injected `seq`. The sequence itself is added to every `TRUNCATE ... RESTART IDENTITY` reset with an explicit `ALTER SEQUENCE "order_reference_seq" RESTART`. |
 | 2 Sep (execution, Task 4) | **A Task 4 test passed for the wrong reason.** The atomicity case mocks `recordAudit` with `mockRejectedValueOnce`, which rejects regardless of arguments — so the suite stayed green when `tx` was removed from the `recordAudit` call. It proved rollback happens, but not that the audit participates in the transaction, which is the actual design decision. | Added a second case asserting `spy.mock.calls[0][1]` is defined. Negative control now fails when `tx` is dropped. General lesson: a mock that ignores its arguments cannot verify how it was called. |
 | 2 Sep (execution, Task 4) | Negative controls run on all three `createOrder` guards. Removing the `maxPerOrder` check, disabling the dedupe, and dropping `tx` from `recordAudit` each fail exactly one test and no others. | The 25 tests are genuine evidence rather than coverage. |
+| 2 Sep (execution, Task 5) | **The plan's `expireOrder` ran `beforeRelease` before claiming the transition.** That hook is where Plan 05 cancels the Stripe PaymentIntent, so for an order this call cannot expire — hold still live, or already terminal — the plan's ordering would cancel the payment of an order that then stays `PENDING`. A live buyer's payment killed by a sweep tick that did nothing else. | Reordered: claim the `PENDING → EXPIRED` transition first, run the hook only if the claim succeeded. Atomicity is unaffected — claim and hook share one transaction, so a throwing hook still rolls the status change back, which the cancel-then-release requirement needs. Test added: `does not run beforeRelease for an order it cannot expire`. |
+| 2 Sep (execution, Task 5) | Step 1 left the not-yet-expired return value to implementation: `{ alreadyTerminal: true }` or a new `NotYetExpired`. Conflating them would tell Plan 05's sweep that a **live** order had been dealt with. | Return type is `{ released: number } | { skipped: 'alreadyTerminal' | 'notYetExpired' }`. Callers still branch on `'released' in result`; the reason is there when it matters. |
+| 2 Sep (execution, Task 5) | `tests/lib/server/events.test.ts`'s shared `input()` helper pins `startsAt` to **2026-08-14, which is now in the past.** Existing tests never noticed because none of them query public visibility, but anything routing through `getPublicEvent` — which filters `startsAt > now()` — gets `null` and fails as `EventNotPurchasableError('unknown')`. A fixture that silently rots with the calendar. | New tests pass an explicit future `startsAt`. **Task 10's `makeEvent` must do the same**, or all 1000 concurrent attempts collapse to `'unknown'` and the oversell test proves nothing. Worth fixing the shared helper to a relative date in a later cleanup. |
+| 2 Sep (execution, Task 5) | Negative control on `updateEvent`'s cancellation path: with `cancelling` forced to `false`, exactly one test fails. `releaseCapacity` is inlined rather than calling `cancelOrder`, which would open a nested transaction and write its audit entry outside this one's atomicity. | Confirmed genuine. |
+| 2 Sep (execution, Task 6) | Task 6 Step 4 rewires the form to render `t('soldOut' | 'aboveMax' | 'notPurchasable' | 'rateLimited')`, but assigns those keys to **Task 8**. next-intl throws on a missing key, so between Task 6 and Task 8 any form-level error would crash the page instead of showing the message — a broken path spanning two tasks, and the sort of thing that gets forgotten. | The four keys added to all three catalogues during Task 6, and the now-orphaned `checkout.stub` (the removed placeholder branch) deleted. Task 8 extends rather than creates. The i18n parity test only checks that locales agree, so it would not have caught the gap. |
 | 2 Sep (critique) | Original Task 9 CLI parameterised `db` but the target module still starts with `import 'server-only'`, which throws under `tsx`. `scripts/create-admin.ts` and `prisma/seed.ts` import *nothing* from `src/lib/server/` — that is the documented pattern in `/CLAUDE.md`. | Task 9 split: pure sweep logic goes in `src/lib/shared/holds-sweep.ts`, the `server-only` wrapper in `src/lib/server/sweep-holds.ts` binds the singleton, the CLI (Task 9) constructs its own client and calls the shared function. No duplication. |
 | 2 Sep (critique) | Original Task 6's action called `flatten(parsed.error)` — never defined or imported. Zod 4 removed `ZodError.flatten()` in favour of `z.flattenError()`. Original Step 3 wrote `React.useActionState` but the component imports named hooks only. And the test table expected `{ ok: true, reference }` while the action `redirect(...)`s (which throws). | Rewritten: `z.flattenError()` used verbatim, `useActionState` imported by name, tests assert on the thrown `REDIRECT:...` string, following `tests/app/admin/events-action.test.ts`. |
 | 2 Sep (critique) | Task 10's `makeEvent` was called with no definition. `createOrder` routes through `getPublicEvent`, which returns `null` without an `EventTranslation` for the requested locale, so the naive helper would surface as `EventNotPurchasableError('unknown')` on all 1000 attempts. | Task 10 spells out the helper: ON_SALE, future `startsAt`, one `EventTranslation` per locale, one active `TicketType`. |
@@ -1061,7 +1066,7 @@ for Plan 05's late-succeed path (`EXPIRED → re-claim → PAID`), and modifies
 - Modify: `tests/lib/server/orders.test.ts`
 - Modify: `tests/lib/server/events.test.ts`
 
-- [ ] **Step 1: The transition table**
+- [x] **Step 1: The transition table**
 
 Express legal transitions once, so Plan 05 adds a row rather than rewriting
 every guard:
@@ -1100,7 +1105,7 @@ Tests:
 - Each writes exactly one `AuditLog` entry per real transition (idempotent
   no-ops write nothing).
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 ```ts
 // src/lib/server/orders.ts (continued)
@@ -1230,13 +1235,13 @@ export async function reclaimCapacityForOrder(
 }
 ```
 
-- [ ] **Step 3: Green — lifecycle tests**
+- [x] **Step 3: Green — lifecycle tests**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/orders.test.ts
 ```
 
-- [ ] **Step 4: Verify idempotency and contention**
+- [x] **Step 4: Verify idempotency and contention**
 
 ```bash
 pnpm test && pnpm test
@@ -1246,7 +1251,7 @@ Expected: green both runs. The "10 concurrent cancels" test is the ordering-
 bug catcher; if it fails only on the second run, an earlier file is leaking
 state.
 
-- [ ] **Step 5: `updateEvent` releases holds on admin cancellation**
+- [x] **Step 5: `updateEvent` releases holds on admin cancellation**
 
 `src/lib/server/events.ts`'s `updateEvent` currently guards capacity and
 price but not status. Modify: when `input.status === 'CANCELLED'` and the
@@ -1277,7 +1282,7 @@ Add to `tests/lib/server/events.test.ts`:
 pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/events.test.ts
 ```
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
@@ -1296,7 +1301,7 @@ Replaces the `PLAN-04:` marker at `src/components/CheckoutForm.tsx:59`.
 - Modify: `src/lib/server/ratelimit.ts` (export `__resetRateLimits`)
 - Create: `tests/app/shop/checkout-action.test.ts`
 
-- [ ] **Step 1: `__resetRateLimits` export + mock idiom**
+- [x] **Step 1: `__resetRateLimits` export + mock idiom**
 
 Add to `src/lib/server/ratelimit.ts`:
 
@@ -1326,7 +1331,7 @@ beforeEach(async () => {
 })
 ```
 
-- [ ] **Step 2: Write the tests first**
+- [x] **Step 2: Write the tests first**
 
 | Case | Expected |
 |---|---|
@@ -1344,7 +1349,7 @@ pnpm exec dotenv -e .env.test -- vitest run tests/app/shop/checkout-action.test.
 
 Expected: failures.
 
-- [ ] **Step 3: Implement the action**
+- [x] **Step 3: Implement the action**
 
 ```ts
 'use server'
@@ -1416,7 +1421,7 @@ export async function submitCheckout(_prev: SubmitState, form: FormData): Promis
 }
 ```
 
-- [ ] **Step 4: Rewire the form**
+- [x] **Step 4: Rewire the form**
 
 `CheckoutForm.tsx:58-68` currently logs and shows a stub. Replace with:
 
@@ -1442,7 +1447,7 @@ Render `state.errors?._form?.[0]` as a page-level error banner. The
 `soldOut`, `aboveMax`, `notPurchasable`, `rateLimited` keys all need copy in
 Task 8.
 
-- [ ] **Step 5: Verify — twice**
+- [x] **Step 5: Verify — twice**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/app/shop/checkout-action.test.ts
@@ -1451,7 +1456,7 @@ pnpm test && pnpm test
 
 Expected: both runs green.
 
-- [ ] **Step 6: Manual smoke**
+- [ ] **Step 6: Manual smoke** *(owner — needs a browser)*
 
 ```bash
 pnpm dev
@@ -1463,7 +1468,7 @@ Expected: browser lands on `/pl/order/KM-YYYY-NNNNNN?t=<token>`. Query
 from a second tab: it redirects to the SAME reference (dedupe), `heldCount`
 still `2`.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \

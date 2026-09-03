@@ -3,7 +3,7 @@ import { Prisma } from '@/generated/prisma/client'
 import { checkoutSchema, type CheckoutInput } from '@/lib/shared/checkout'
 import { recordAudit } from './audit'
 import { db } from './db'
-import { holdCapacity } from './holds'
+import { holdCapacity, releaseCapacity } from './holds'
 import { generateOrderReference } from './order-reference'
 import { getPublicEvent } from './public-events'
 
@@ -180,5 +180,171 @@ export async function createOrder(raw: CheckoutInput): Promise<CreateOrderResult
       accessToken: order.accessToken,
       holdExpiresAt: order.holdExpiresAt!,
     }
+  })
+}
+
+/**
+ * Every path out of `PENDING`.
+ *
+ * The conditional `UPDATE ... WHERE status = 'PENDING'` is the sole arbiter.
+ * There is deliberately no pre-transaction guard reading the current status:
+ * that would make the sequential second call throw while the concurrent case
+ * succeeded, which is backwards from where the surprise belongs.
+ *
+ * `skipped` distinguishes *why* nothing happened. Collapsing 'notYetExpired'
+ * into 'alreadyTerminal' would tell the Plan 05 sweep that a live order had
+ * been dealt with.
+ */
+export type SkipReason = 'alreadyTerminal' | 'notYetExpired'
+export type ReleaseResult = { released: number } | { skipped: SkipReason }
+
+async function releaseHoldForOrder(
+  orderId: string,
+  nextStatus: 'CANCELLED' | 'EXPIRED' | 'FAILED',
+  requireExpired: boolean,
+  tx: Prisma.TransactionClient,
+): Promise<{ claimed: boolean }> {
+  // $1 is cast to OrderStatus for the assignment and to text for the CASE
+  // comparison, with separate parameters. Reusing one parameter for both
+  // makes Postgres refuse with 42P08, "inconsistent types deduced".
+  const rows = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+    `UPDATE "Order"
+        SET status = $1::"OrderStatus",
+            "cancelledAt" = CASE WHEN $2::text = 'CANCELLED' THEN now() ELSE "cancelledAt" END
+      WHERE id = $3
+        AND status = 'PENDING'
+        ${requireExpired ? 'AND "holdExpiresAt" < now()' : ''}
+    RETURNING id`,
+    nextStatus,
+    nextStatus,
+    orderId,
+  )
+
+  return { claimed: rows.length > 0 }
+}
+
+async function releaseItems(orderId: string, tx: Prisma.TransactionClient): Promise<number> {
+  const items = await tx.orderItem.findMany({
+    where: { orderId },
+    select: { ticketTypeId: true, quantity: true },
+  })
+
+  let released = 0
+  for (const item of items) {
+    await releaseCapacity({ ticketTypeId: item.ticketTypeId, quantity: item.quantity, client: tx })
+    released += item.quantity
+  }
+
+  return released
+}
+
+export async function cancelOrder(orderId: string, reason: string): Promise<ReleaseResult> {
+  return db.$transaction(async (tx) => {
+    const { claimed } = await releaseHoldForOrder(orderId, 'CANCELLED', false, tx)
+    if (!claimed) return { skipped: 'alreadyTerminal' }
+
+    const released = await releaseItems(orderId, tx)
+    await recordAudit(
+      { action: 'order.cancel', entityType: 'Order', entityId: orderId, meta: { reason } },
+      tx,
+    )
+
+    return { released }
+  })
+}
+
+export async function expireOrder(
+  orderId: string,
+  opts?: { beforeRelease?: (client: Prisma.TransactionClient) => Promise<void> | void },
+): Promise<ReleaseResult> {
+  return db.$transaction(async (tx) => {
+    // Claim the transition FIRST, then run the hook.
+    //
+    // The plan specified the reverse — hook, then claim — but that runs the
+    // hook for orders this call cannot expire. Plan 05 cancels a Stripe
+    // PaymentIntent in this hook, so the plan's ordering would kill the
+    // payment of an order that then stays PENDING. Claiming first means the
+    // hook only ever runs for an order we have actually transitioned, and
+    // because the claim and the hook share one transaction, a throwing hook
+    // still rolls the status change back.
+    const { claimed } = await releaseHoldForOrder(orderId, 'EXPIRED', true, tx)
+
+    if (!claimed) {
+      // Distinguish "someone got here first" from "the hold is still live",
+      // which is a race with Plan 05 extending a hold on a payment retry.
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        select: { status: true },
+      })
+      return { skipped: order?.status === 'PENDING' ? 'notYetExpired' : 'alreadyTerminal' }
+    }
+
+    // Cancel-then-release. The reverse order would leave a window in which
+    // the seats are back on sale while Stripe would still accept the charge.
+    if (opts?.beforeRelease) await opts.beforeRelease(tx)
+
+    const released = await releaseItems(orderId, tx)
+    await recordAudit({ action: 'order.expire', entityType: 'Order', entityId: orderId }, tx)
+
+    return { released }
+  })
+}
+
+export async function failOrder(orderId: string, reason: string): Promise<ReleaseResult> {
+  // No caller in Plan 04. Plan 05's webhook handler for
+  // payment_intent.payment_failed and .canceled calls this.
+  return db.$transaction(async (tx) => {
+    const { claimed } = await releaseHoldForOrder(orderId, 'FAILED', false, tx)
+    if (!claimed) return { skipped: 'alreadyTerminal' }
+
+    const released = await releaseItems(orderId, tx)
+    await recordAudit(
+      { action: 'order.fail', entityType: 'Order', entityId: orderId, meta: { reason } },
+      tx,
+    )
+
+    return { released }
+  })
+}
+
+/**
+ * Plan 05's late-succeed path: a Przelewy24 or SEPA transfer that confirms
+ * after the sweep already expired the order. Re-takes the capacity, so it can
+ * fail with InsufficientCapacityError if the concert sold out meanwhile —
+ * which is exactly when Plan 05 must refund instead of fulfilling.
+ */
+export async function reclaimCapacityForOrder(
+  orderId: string,
+  tx: Prisma.TransactionClient,
+): Promise<void> {
+  const order = await tx.order.findUniqueOrThrow({
+    where: { id: orderId },
+    select: {
+      status: true,
+      items: { select: { ticketTypeId: true, quantity: true } },
+    },
+  })
+
+  if (order.status !== 'EXPIRED') {
+    throw new Error(`reclaimCapacityForOrder: order ${orderId} is ${order.status}, expected EXPIRED`)
+  }
+
+  for (const item of order.items) {
+    const ticketType = await tx.ticketType.findUniqueOrThrow({
+      where: { id: item.ticketTypeId },
+      select: { eventId: true },
+    })
+
+    await holdCapacity({
+      ticketTypeId: item.ticketTypeId,
+      eventId: ticketType.eventId,
+      quantity: item.quantity,
+      client: tx,
+    })
+  }
+
+  await tx.order.update({
+    where: { id: orderId },
+    data: { status: 'PENDING', holdExpiresAt: new Date(Date.now() + HOLD_DURATION_MS) },
   })
 }

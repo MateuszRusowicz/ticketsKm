@@ -52,7 +52,10 @@
     "invoiceAddress": "Adres",
     "acceptedTerms": "Akceptuję <terms>regulamin</terms> i <privacy>politykę prywatności</privacy>.",
     "submit": "Przejdź do płatności",
-    "stub": "Formularz jest poprawny. Płatności zostaną podłączone w kolejnym etapie."
+    "soldOut": "Niestety, w trakcie składania zamówienia zabrakło wolnych miejsc. Zmniejsz liczbę biletów albo wybierz inny koncert.",
+    "aboveMax": "Przekroczono maksymalną liczbę biletów na jedno zamówienie.",
+    "notPurchasable": "Sprzedaż biletów na ten koncert nie jest już dostępna.",
+    "rateLimited": "Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie."
   },
   "validation": {
     "required": "To pole jest wymagane.",

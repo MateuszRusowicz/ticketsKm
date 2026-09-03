@@ -29,3 +29,13 @@ export function rateLimit(key: string, limit: number, windowMs: number): boolean
 export function pruneRateLimits(now = Date.now()): void {
   for (const [key, w] of windows) if (w.resetAt <= now) windows.delete(key)
 }
+
+/**
+ * Test-only: clear every window. Never call this from application code.
+ *
+ * The map is module-level, so without a reset every test in a file shares one
+ * budget and a rate-limit test poisons everything that runs after it.
+ */
+export function __resetRateLimits(): void {
+  windows.clear()
+}
