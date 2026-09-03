@@ -72,7 +72,10 @@ loaded automatically every session; this one is not.
 | 2 Sep (execution, Task 5) | Negative control on `updateEvent`'s cancellation path: with `cancelling` forced to `false`, exactly one test fails. `releaseCapacity` is inlined rather than calling `cancelOrder`, which would open a nested transaction and write its audit entry outside this one's atomicity. | Confirmed genuine. |
 | 2 Sep (execution, Task 6) | Task 6 Step 4 rewires the form to render `t('soldOut' | 'aboveMax' | 'notPurchasable' | 'rateLimited')`, but assigns those keys to **Task 8**. next-intl throws on a missing key, so between Task 6 and Task 8 any form-level error would crash the page instead of showing the message — a broken path spanning two tasks, and the sort of thing that gets forgotten. | The four keys added to all three catalogues during Task 6, and the now-orphaned `checkout.stub` (the removed placeholder branch) deleted. Task 8 extends rather than creates. The i18n parity test only checks that locales agree, so it would not have caught the gap. |
 | 2 Sep (critique) | Original Task 9 CLI parameterised `db` but the target module still starts with `import 'server-only'`, which throws under `tsx`. `scripts/create-admin.ts` and `prisma/seed.ts` import *nothing* from `src/lib/server/` — that is the documented pattern in `/CLAUDE.md`. | Task 9 split: pure sweep logic goes in `src/lib/shared/holds-sweep.ts`, the `server-only` wrapper in `src/lib/server/sweep-holds.ts` binds the singleton, the CLI (Task 9) constructs its own client and calls the shared function. No duplication. |
+| 2 Sep (execution, Task 7) | Task 7 Step 1's snippet calls `timingSafeEqual(Buffer.from(order.accessToken), Buffer.from(token))` with no length check. **Node throws `RangeError: Input buffers must have the same byte length` on unequal buffers**, and the token comes straight from a user-controlled query string — so `?t=x` would 500 the page rather than render "not found". Reproduced by negative control. | `tokenMatches()` returns false on a length mismatch before calling `timingSafeEqual`. Length leaks nothing: every token is a v4 UUID, so the length is public. Same fix applied to the Cancel action in Step 3, which copies the same snippet. |
 | 2 Sep (critique) | Original Task 6's action called `flatten(parsed.error)` — never defined or imported. Zod 4 removed `ZodError.flatten()` in favour of `z.flattenError()`. Original Step 3 wrote `React.useActionState` but the component imports named hooks only. And the test table expected `{ ok: true, reference }` while the action `redirect(...)`s (which throws). | Rewritten: `z.flattenError()` used verbatim, `useActionState` imported by name, tests assert on the thrown `REDIRECT:...` string, following `tests/app/admin/events-action.test.ts`. |
+| 3 Sep (execution, Task 8) | **Task 6's rewiring silently broke every field-level error message.** The form submits natively through `action={action}`, so react-hook-form's `handleSubmit` never runs and its resolver never fires on submit; meanwhile the component read errors only from RHF's `errors` object and ignored the server's. A buyer submitting an invalid email saw **no message at all** — the page just re-rendered. Typecheck, lint and all 275 tests stayed green, because the test setup cannot render components. | Added a `fieldError(name, clientKey)` helper that prefers the server's message key and falls back to RHF's; both come from the same Zod schema, so they share a key vocabulary. Added `validation.incomplete` for the attendee-name index gap, which the server reports and nothing rendered. **Not covered by an automated test** — `vitest.config.mts` is node-environment with no DOM — so this is verified by reading and by the owner's browser pass. |
+| 3 Sep (execution, Task 8) | Task 8's draft key names (`checkout.errors.*`, `order.holdingHeading`) did not match what Tasks 6 and 7 actually shipped (`checkout.*`, `order.holding.heading`). The copy had to be written in those tasks because next-intl throws on a missing key. | Step 1 rewritten to record the real shape rather than renaming working, tested code to match a draft. Also dropped the planned ICU `few` plural: the hold body states a time rather than counting seats, so the Polish plural category never arises. |
 | 2 Sep (critique) | Task 10's `makeEvent` was called with no definition. `createOrder` routes through `getPublicEvent`, which returns `null` without an `EventTranslation` for the requested locale, so the naive helper would surface as `EventNotPurchasableError('unknown')` on all 1000 attempts. | Task 10 spells out the helper: ON_SALE, future `startsAt`, one `EventTranslation` per locale, one active `TicketType`. |
 | 2 Sep (critique) | **A genuine oversell race**: capacity is on `Event`, the original UPDATE locked only `TicketType`, and read capacity outside the transaction. Interleaving: buyer reads capacity 900 → admin `updateEvent(capacity: 896)` → buyer's UPDATE evaluates against stale 900 → `heldCount` 900 against capacity 896. The claim that `updateEvent`'s guard protected against this was wrong — that guard has the identical read-outside/write-inside race. | Task 3 rewrites `holdCapacity`: the predicate joins `Event` inside the SQL statement, and a `SELECT capacity FROM "Event" WHERE id = $1 FOR UPDATE` at the top of the transaction serialises against `updateEvent`, which also acquires the same lock (Task 5 Step 5 modifies `updateEvent`). Explicit note in Task 3 Step 2 about `EvalPlanQual` recheck bounds. |
 | 2 Sep (critique) | `checkoutSchema.quantity` is unbounded (`z.number().int().positive()`). One POST with `quantity: 900` holds an entire venue for 30 minutes — Plan 01's per-instance rate limiter does not stop a single request. `src/lib/shared/public-event.ts` literally promises "Plan 04 re-checks transactionally at order creation". | Task 4 Step 2 adds an explicit `input.quantity > view.maxPerOrder` guard throwing `QuantityAboveMaxPerOrderError`; Task 4 Step 5 adds `.max(50)` to `checkoutSchema.quantity`. Test row added. |
@@ -1456,7 +1459,7 @@ pnpm test && pnpm test
 
 Expected: both runs green.
 
-- [ ] **Step 6: Manual smoke** *(owner — needs a browser)*
+- [x] **Step 6: Manual smoke** *(owner — confirmed working 3 Sep 2026)*
 
 ```bash
 pnpm dev
@@ -1491,7 +1494,7 @@ cancel, so the URL has to be unguessable by design.
 - Create: `tests/lib/server/order-lookup.test.ts`
 - Create: `tests/app/shop/cancel-order-action.test.ts`
 
-- [ ] **Step 1: The token-guarded lookup**
+- [x] **Step 1: The token-guarded lookup**
 
 ```ts
 // src/lib/server/order-lookup.ts
@@ -1520,7 +1523,7 @@ Tests:
 - Constant-time compare: verified only structurally (unit-testing the
   timing is out of scope).
 
-- [ ] **Step 2: The page**
+- [x] **Step 2: The page**
 
 Server Component. `setRequestLocale(locale)` before `getTranslations`. Page
 export config:
@@ -1552,7 +1555,7 @@ Show `reference`, buyer's name, concert title/date/venue, quantity, total
 in `Order.currency`. **No attendee names on this page** — even guarded by a
 token they are PII the confirmation flow does not need to show.
 
-- [ ] **Step 3: The Cancel action**
+- [x] **Step 3: The Cancel action**
 
 ```ts
 'use server'
@@ -1583,7 +1586,7 @@ Tests:
   `alreadyTerminal` shape wired to the `notFound` copy, `heldCount`
   decremented exactly once (idempotency from Task 5)
 
-- [ ] **Step 4: `robots.ts` disallow `/*/order/`**
+- [x] **Step 4: `robots.ts` disallow `/*/order/`**
 
 `src/app/robots.ts` currently disallows everything until launch. When Plan
 02 Task 9 flips this to allow indexing, `/order/` must stay disallowed:
@@ -1591,7 +1594,7 @@ tokens in query strings are still reachable through referrer leaks and
 proxy logs. Add an explicit `disallow: '/*/order/'` alongside whatever the
 launch state ends up being. Comment it so nobody deletes it during the flip.
 
-- [ ] **Step 5: Manual smoke**
+- [x] **Step 5: Manual smoke** *(owner — confirmed working 3 Sep 2026)*
 
 ```bash
 pnpm dev
@@ -1603,7 +1606,7 @@ found" (constant-time compare fails). With the correct token, refresh —
 copy is consistent, hold-until time visible. Click Cancel — page re-renders
 as `cancelled`, `heldCount` back to what it was.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
@@ -1621,47 +1624,52 @@ once if deferred.
 
 **Files:** `src/messages/pl.json`, `src/messages/en.json`, `src/messages/de.json`.
 
-- [ ] **Step 1: Add every key in all three locales**
+- [x] **Step 1: Add every key in all three locales** *(delivered across Tasks 6-8)*
 
-Namespaces to extend or add:
+**The key names below differ from this step's original draft.** The copy was
+pulled forward into Tasks 6 and 7, because the components that render it were
+written there and next-intl throws on a missing key — leaving the draft names
+here would have described something that does not exist. Actual shipped shape:
 
 ```
-checkout.errors.soldOut          "The concert sold out while you were filling in the form."
-checkout.errors.notPurchasable   "This concert is no longer on sale."
-checkout.errors.aboveMax         "You can order at most {max} tickets in one purchase."
-checkout.errors.rateLimited      "Too many attempts — try again in a minute."
-checkout.errors.generic          "Something went wrong. Please try again."
-checkout.errors.attendeesIncomplete "Please provide a name for every ticket."
+validation.incomplete            a name is missing for one of the tickets
 
-order.holdingHeading             "Seats held for you"
-order.holdingBody                "We are holding {quantity} seat(s) until {holdTime}. Payment will be enabled in the next release."
-order.expiredHeading             "Your hold has expired"
-order.expiredBody                "The seats have been released. You can start over."
-order.cancelledHeading           "Order cancelled"
-order.cancelHold                 "Release these seats"
-order.startOver                  "Back to the concert"
-order.reference                  "Reference"
-order.total                      "Total"
-order.notFound                   "No order with this reference exists."
+checkout.soldOut                 sold out while the form was being filled in
+checkout.aboveMax                more tickets than one order allows
+checkout.notPurchasable          concert no longer on sale
+checkout.rateLimited             too many attempts
+
+order.reference / .buyer / .concert / .venue / .quantity / .total
+order.cancel                     release these seats
+order.cancelFailed               order not found (wrong or missing token)
+order.startOver                  back to the concert
+order.holding.heading  / .body   body takes {time}, pre-formatted
+order.expired.heading  / .body
+order.cancelled.heading / .body
+order.paid.heading     / .body   placeholder until Plan 05 renders tickets
 ```
 
-Polish needs an ICU `few` plural for `order.holdingBody`. English and German
-use `one`/`other`.
+Errors sit flat under `checkout.*` rather than nested under `checkout.errors.*`,
+and the four order bands are nested (`order.holding.heading`) rather than
+flattened (`order.holdingHeading`), so the page can index them by band name.
 
-**`holdTime` is passed pre-formatted**, not as a raw Date. `src/i18n/request.ts`
-sets no `timeZone` for next-intl, so `{holdExpiresAt, time, short}` would
-render in the server's zone (UTC on Vercel) — the trap `src/lib/shared/format.ts`
-documents. Format with `formatConcertTime(holdExpiresAt, locale)` in the
-Server Component and pass the string in.
+**`{time}` is passed pre-formatted**, via `formatConcertTime(holdExpiresAt, locale)`
+in the Server Component. `src/i18n/request.ts` sets no `timeZone`, so
+`{holdExpiresAt, time, short}` would render in the server's zone — UTC on
+Vercel — which is the trap `src/lib/shared/format.ts` documents.
 
-- [ ] **Step 2: Native-speaker note**
+No ICU plural is needed: the body says "we are holding your seats until
+{time}" rather than counting them, and the quantity is shown in the summary
+list. That sidesteps the Polish `few` category entirely.
+
+- [x] **Step 2: Native-speaker note**
 
 Polish is the source language and the team's own. German and English
 placeholder translations are fine to ship the demo; note in
 `plan/09-open-questions.md` the DE/EN copy on `order.*` and
 `checkout.errors.*` that a native speaker still has to pass.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/i18n/messages.test.ts

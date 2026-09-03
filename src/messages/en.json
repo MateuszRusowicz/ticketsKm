@@ -63,7 +63,8 @@
     "attendeeName": "Enter a name for every ticket.",
     "tooLong": "This value is too long.",
     "terms": "You must accept the terms.",
-    "quantity": "Invalid number of tickets."
+    "quantity": "Invalid number of tickets.",
+    "incomplete": "Please provide a name for every ticket."
   },
   "legal": {
     "terms": "Terms of sale",
@@ -107,5 +108,32 @@
   "notFound": {
     "heading": "Page not found",
     "body": "This concert does not exist or is no longer available."
+  },
+  "order": {
+    "reference": "Order number",
+    "buyer": "Buyer",
+    "concert": "Concert",
+    "venue": "Venue",
+    "quantity": "Tickets",
+    "total": "Total",
+    "cancel": "Cancel and release the seats",
+    "cancelFailed": "Order not found. Check that the link is complete.",
+    "startOver": "Back to the concert",
+    "holding": {
+      "heading": "Seats held",
+      "body": "We are holding your seats until {time}. Payment goes live in the next release."
+    },
+    "expired": {
+      "heading": "Hold expired",
+      "body": "The hold has expired and the seats are back on sale."
+    },
+    "cancelled": {
+      "heading": "Order not active",
+      "body": "This order is no longer active."
+    },
+    "paid": {
+      "heading": "Order paid",
+      "body": "Tickets will appear here once payment goes live."
+    }
   }
 }

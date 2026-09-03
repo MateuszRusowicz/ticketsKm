@@ -63,7 +63,8 @@
     "attendeeName": "Podaj imię i nazwisko dla każdego biletu.",
     "tooLong": "Ta wartość jest za długa.",
     "terms": "Musisz zaakceptować regulamin.",
-    "quantity": "Nieprawidłowa liczba biletów."
+    "quantity": "Nieprawidłowa liczba biletów.",
+    "incomplete": "Podaj imię i nazwisko dla każdego biletu."
   },
   "legal": {
     "terms": "Regulamin",
@@ -107,5 +108,32 @@
   "notFound": {
     "heading": "Nie znaleziono strony",
     "body": "Ten koncert nie istnieje lub nie jest już dostępny."
+  },
+  "order": {
+    "reference": "Numer zamówienia",
+    "buyer": "Zamawiający",
+    "concert": "Koncert",
+    "venue": "Miejsce",
+    "quantity": "Liczba biletów",
+    "total": "Do zapłaty",
+    "cancel": "Anuluj rezerwację i zwolnij miejsca",
+    "cancelFailed": "Nie znaleziono zamówienia. Sprawdź, czy link jest kompletny.",
+    "startOver": "Wróć do koncertu",
+    "holding": {
+      "heading": "Miejsca zarezerwowane",
+      "body": "Trzymamy Twoje miejsca do {time}. Płatności uruchomimy w kolejnej wersji serwisu."
+    },
+    "expired": {
+      "heading": "Rezerwacja wygasła",
+      "body": "Czas rezerwacji minął, a miejsca wróciły do sprzedaży."
+    },
+    "cancelled": {
+      "heading": "Zamówienie nieaktywne",
+      "body": "To zamówienie nie jest już aktywne."
+    },
+    "paid": {
+      "heading": "Zamówienie opłacone",
+      "body": "Bilety pojawią się tutaj po uruchomieniu płatności."
+    }
   }
 }

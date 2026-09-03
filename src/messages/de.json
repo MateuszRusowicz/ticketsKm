@@ -63,7 +63,8 @@
     "attendeeName": "Bitte geben Sie für jedes Ticket einen Namen an.",
     "tooLong": "Dieser Wert ist zu lang.",
     "terms": "Sie müssen die Bedingungen akzeptieren.",
-    "quantity": "Ungültige Anzahl von Tickets."
+    "quantity": "Ungültige Anzahl von Tickets.",
+    "incomplete": "Bitte geben Sie für jedes Ticket einen Namen an."
   },
   "legal": {
     "terms": "Verkaufsbedingungen",
@@ -107,5 +108,32 @@
   "notFound": {
     "heading": "Seite nicht gefunden",
     "body": "Dieses Konzert existiert nicht oder ist nicht mehr verfügbar."
+  },
+  "order": {
+    "reference": "Bestellnummer",
+    "buyer": "Besteller",
+    "concert": "Konzert",
+    "venue": "Ort",
+    "quantity": "Anzahl Tickets",
+    "total": "Zu zahlen",
+    "cancel": "Reservierung stornieren und Plätze freigeben",
+    "cancelFailed": "Bestellung nicht gefunden. Bitte prüfen Sie, ob der Link vollständig ist.",
+    "startOver": "Zurück zum Konzert",
+    "holding": {
+      "heading": "Plätze reserviert",
+      "body": "Wir halten Ihre Plätze bis {time}. Die Bezahlung folgt in der nächsten Version."
+    },
+    "expired": {
+      "heading": "Reservierung abgelaufen",
+      "body": "Die Reservierungszeit ist abgelaufen, die Plätze sind wieder im Verkauf."
+    },
+    "cancelled": {
+      "heading": "Bestellung nicht aktiv",
+      "body": "Diese Bestellung ist nicht mehr aktiv."
+    },
+    "paid": {
+      "heading": "Bestellung bezahlt",
+      "body": "Die Tickets erscheinen hier, sobald die Bezahlung aktiv ist."
+    }
   }
 }

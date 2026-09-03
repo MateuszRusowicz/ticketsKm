@@ -146,6 +146,26 @@ the evening sales open?
 
 ---
 
+### 13. German and English copy on the order flow *(added 3 Sep 2026)*
+
+**Non-blocking for the demo; needs a native speaker before launch.**
+
+Polish is the source language and the team's own, so `pl.json` is
+authoritative. The German and English strings added by Plan 04 were written
+without a native reviewer and should be read by one before real buyers see
+them:
+
+- `checkout.soldOut`, `checkout.aboveMax`, `checkout.notPurchasable`,
+  `checkout.rateLimited`
+- `validation.incomplete`
+- the whole `order.*` namespace — the four bands (`holding`, `expired`,
+  `cancelled`, `paid`), plus `cancel`, `cancelFailed` and `startOver`
+
+These are the strings a buyer meets at the exact moment something has gone
+wrong — sold out mid-checkout, a lapsed hold, a rejected cancel — so tone
+matters more here than on the marketing pages. The German `Sie` form is used
+throughout; confirm that matches the festival's voice elsewhere.
+
 ## Answered — recorded for traceability
 
 | Question | Answer |

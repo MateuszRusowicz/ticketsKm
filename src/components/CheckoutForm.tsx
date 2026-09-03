@@ -34,7 +34,8 @@ export function CheckoutForm({
   // schema server-side, then redirects on success, so there is no success
   // branch to render here.
   const [state, action] = useActionState<SubmitState, FormData>(submitCheckout, {})
-  const formError = 'errors' in state ? state.errors._form?.[0] : undefined
+  const serverErrors = 'errors' in state ? state.errors : undefined
+  const formError = serverErrors?._form?.[0]
 
   const {
     register,
@@ -63,6 +64,18 @@ export function CheckoutForm({
   /** Zod carries message keys, not sentences, so errors land in the buyer's language. */
   const msg = (key?: string) => (key ? tv(key as 'required') : undefined)
 
+  /**
+   * Server error first, client error second.
+   *
+   * The form submits natively via `action`, so react-hook-form's
+   * handleSubmit never runs and its resolver never fires on submit — its
+   * `errors` only fill in from field-level interaction. The server re-validates
+   * with the same schema and returns the same message keys, so without this
+   * merge an invalid submission would re-render with no message anywhere.
+   */
+  const fieldError = (name: string, clientKey?: string) =>
+    msg(serverErrors?.[name]?.[0] ?? clientKey)
+
   return (
     <form action={action} className="mt-8 max-w-[800px]" noValidate>
       {formError && (
@@ -78,29 +91,29 @@ export function CheckoutForm({
       <fieldset className="border-0 p-0">
         <legend className="text-xl">{t('buyerSection')}</legend>
 
-        <Field name="email" label={t('email')} hint={t('emailHint')} error={msg(errors.email?.message)}>
+        <Field name="email" label={t('email')} hint={t('emailHint')} error={fieldError('email', errors.email?.message)}>
           {(a) => <input type="email" autoComplete="email" {...a} {...register('email')} />}
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field name="firstName" label={t('firstName')} error={msg(errors.firstName?.message)}>
+          <Field name="firstName" label={t('firstName')} error={fieldError('firstName', errors.firstName?.message)}>
             {(a) => <input autoComplete="given-name" {...a} {...register('firstName')} />}
           </Field>
-          <Field name="lastName" label={t('lastName')} error={msg(errors.lastName?.message)}>
+          <Field name="lastName" label={t('lastName')} error={fieldError('lastName', errors.lastName?.message)}>
             {(a) => <input autoComplete="family-name" {...a} {...register('lastName')} />}
           </Field>
         </div>
 
-        <Field name="phone" label={t('phone')} error={msg(errors.phone?.message)}>
+        <Field name="phone" label={t('phone')} error={fieldError('phone', errors.phone?.message)}>
           {(a) => <input type="tel" autoComplete="tel" {...a} {...register('phone')} />}
         </Field>
       </fieldset>
 
       <fieldset className="mt-8 border-0 p-0">
         <legend className="text-xl">{t('attendeesSection')}</legend>
-        {errors.attendeeNames?.message && (
+        {fieldError('attendeeNames', errors.attendeeNames?.message) && (
           <p role="alert" className="mt-2 text-sm text-danger">
-            {msg(errors.attendeeNames.message)}
+            {fieldError('attendeeNames', errors.attendeeNames?.message)}
           </p>
         )}
         {Array.from({ length: quantity }, (_, i) => (
@@ -123,13 +136,13 @@ export function CheckoutForm({
 
         {needsInvoice && (
           <div className="mt-2">
-            <Field name="companyName" label={t('companyName')} error={msg(errors.companyName?.message)}>
+            <Field name="companyName" label={t('companyName')} error={fieldError('companyName', errors.companyName?.message)}>
               {(a) => <input {...a} {...register('companyName')} />}
             </Field>
-            <Field name="nip" label={t('nip')} error={msg(errors.nip?.message)}>
+            <Field name="nip" label={t('nip')} error={fieldError('nip', errors.nip?.message)}>
               {(a) => <input {...a} {...register('nip')} />}
             </Field>
-            <Field name="invoiceAddress" label={t('invoiceAddress')} error={msg(errors.invoiceAddress?.message)}>
+            <Field name="invoiceAddress" label={t('invoiceAddress')} error={fieldError('invoiceAddress', errors.invoiceAddress?.message)}>
               {(a) => <input {...a} {...register('invoiceAddress')} />}
             </Field>
           </div>
@@ -156,9 +169,9 @@ export function CheckoutForm({
           })}
         </span>
       </label>
-      {errors.acceptedTerms?.message && (
+      {fieldError('acceptedTerms', errors.acceptedTerms?.message) && (
         <p role="alert" className="text-sm text-danger">
-          {msg(errors.acceptedTerms.message)}
+          {fieldError('acceptedTerms', errors.acceptedTerms?.message)}
         </p>
       )}
 
