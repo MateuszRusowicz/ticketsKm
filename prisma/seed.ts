@@ -268,9 +268,16 @@ async function main() {
 
   await db.order.upsert({
     where: { reference: SEED_ORDER_REFERENCE },
-    // Nothing to refresh: re-seeding must not resurrect an order the sweep has
-    // already expired, or it would look like the sweep failed.
-    update: {},
+    // Restored on every seed, because `heldCount` above is set
+    // unconditionally: if the sweep had expired this order and we left it
+    // alone, the counter would say 5 while no PENDING order justified it —
+    // drift, which `pnpm holds:verify` correctly reports. Re-seeding is a
+    // reset to a known state, so both halves move together.
+    update: {
+      status: 'PENDING',
+      holdExpiresAt: inDays(-1),
+      cancelledAt: null,
+    },
     create: {
       reference: SEED_ORDER_REFERENCE,
       // Deterministic so a manual smoke of the guarded order URL is

@@ -80,6 +80,8 @@ loaded automatically every session; this one is not.
 | 3 Sep (execution, Task 9) | The seed's summary line counted **all** orders in the database and printed them as though it had seeded them — so after the owner's manual browser smoke it read `2 orders` where the plan's expected output says `1`. A live dev database makes that assertion non-deterministic. | Log reworded to `Orders in database: N.`, which is what it actually measures. The seed *test* truncates first, so its `order.count() === 1` assertion is unaffected. |
 | 3 Sep (execution, Task 10) | **NEGATIVE CONTROL, recorded as Step 4 requires.** With `AND tt."soldCount" + tt."heldCount" + $1 <= e.capacity` commented out of `holdCapacity`, Test 1 against a **capacity-900** event reported **1000 of 1000 buyers succeeded** — `AssertionError: expected [ …(1000) ] to have a length of 900 but got 1000`, in 10.5s. Predicate restored: **900 succeeded, 100 rejected with `InsufficientCapacityError`, `heldCount === 900`, `soldCount === 0`, 900 PENDING orders.** All three tests green. | The harness demonstrably distinguishes a protected system from an unprotected one, so the green result is evidence rather than decoration. This is the single check that promotes the plan's done-when condition from "a test passes" to "overselling is impossible". Contrast the `db.ts` pool test (Task 0), which passed identically with its tuning removed and was therefore downgraded to a smoke test. |
 | 3 Sep (execution, Task 10) | `createOrder` read `db` directly, so the test could not point it at a larger pool. Step 3 offered a global override as the fallback; that would have leaked test wiring into the module. | Split into `createOrderWith(client, input)` plus `createOrder = (input) => createOrderWith(db, input)`, mirroring Task 9's sweep shape. `getPublicEvent` still reads through `db` — it is an outer, non-transactional read, so its pool cannot deadlock against the transaction's. |
+| 3 Sep (execution, Task 11) | **`pnpm holds:verify` caught a real bug in the seed on its first serious use** — `test-w-rezerwacji: heldCount=5 expected=0 drift=+5`, exit 1. The seed set `heldCount = 5` unconditionally through `updateMany` while the order upsert used `update: {}`, so re-seeding a database whose sweep had already expired that order restored the counter without restoring the order. My original comment ("re-seeding must not resurrect an order the sweep expired") was wrong: `pnpm db:seed` is documented as safe to re-run, which means reset-to-known-state, and an inconsistent counter is worse than a resurrected fixture. | The upsert's `update` branch now restores `status: 'PENDING'`, `holdExpiresAt: inDays(-1)` and `cancelledAt: null`, so both halves move together. Regression test added to `tests/prisma/seed.test.ts` — **the other tests in that file truncate first and structurally cannot reach this state**. Negative control: with `update: {}` restored, that test fails and no other does. |
+| 3 Sep (execution, Task 11) | Task 11 Step 5 expects the sweep to print `{"expired":0,"released":0}`. It prints `{"expired":1,"released":5}` when a seed has run since the last sweep, because the seed deliberately plants a stale `PENDING` hold. | Not a defect in either. The invariant that matters is that **`holds:verify` reports no drift before and after the sweep**, which it does. Step 5's expectation corrected to say the sweep clears whatever the most recent seed planted. |
 | 2 Sep (critique) | Task 10's `makeEvent` was called with no definition. `createOrder` routes through `getPublicEvent`, which returns `null` without an `EventTranslation` for the requested locale, so the naive helper would surface as `EventNotPurchasableError('unknown')` on all 1000 attempts. | Task 10 spells out the helper: ON_SALE, future `startsAt`, one `EventTranslation` per locale, one active `TicketType`. |
 | 2 Sep (critique) | **A genuine oversell race**: capacity is on `Event`, the original UPDATE locked only `TicketType`, and read capacity outside the transaction. Interleaving: buyer reads capacity 900 → admin `updateEvent(capacity: 896)` → buyer's UPDATE evaluates against stale 900 → `heldCount` 900 against capacity 896. The claim that `updateEvent`'s guard protected against this was wrong — that guard has the identical read-outside/write-inside race. | Task 3 rewrites `holdCapacity`: the predicate joins `Event` inside the SQL statement, and a `SELECT capacity FROM "Event" WHERE id = $1 FOR UPDATE` at the top of the transaction serialises against `updateEvent`, which also acquires the same lock (Task 5 Step 5 modifies `updateEvent`). Explicit note in Task 3 Step 2 about `EvalPlanQual` recheck bounds. |
 | 2 Sep (critique) | `checkoutSchema.quantity` is unbounded (`z.number().int().positive()`). One POST with `quantity: 900` holds an entire venue for 30 minutes — Plan 01's per-instance rate limiter does not stop a single request. `src/lib/shared/public-event.ts` literally promises "Plan 04 re-checks transactionally at order creation". | Task 4 Step 2 adds an explicit `input.quantity > view.maxPerOrder` guard throwing `QuantityAboveMaxPerOrderError`; Task 4 Step 5 adds `.max(50)` to `checkoutSchema.quantity`. Test row added. |
@@ -2159,7 +2161,7 @@ pnpm typecheck && pnpm lint && pnpm test
 
 ## Task 11: Full verification and handoff
 
-- [ ] **Step 1: Docker Postgres and migrations current**
+- [x] **Step 1: Docker Postgres and migrations current**
 
 ```bash
 docker compose up -d
@@ -2167,7 +2169,7 @@ pnpm exec dotenv -e .env -- prisma migrate deploy
 pnpm db:seed
 ```
 
-- [ ] **Step 2: Clean-tree gate**
+- [x] **Step 2: Clean-tree gate**
 
 ```bash
 rm -rf .next next-env.d.ts tsconfig.tsbuildinfo
@@ -2178,30 +2180,31 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 the shape a mistake in Task 6 would take. `pnpm build` catches
 `import 'server-only'` reaching a client bundle.
 
-- [ ] **Step 3: Twice**
+- [x] **Step 3: Twice**
 
 ```bash
 pnpm test && pnpm test
 ```
 
-- [ ] **Step 4: The negative control has been recorded**
+- [x] **Step 4: The negative control has been recorded**
 
 Confirm the Findings log has the entry for Task 10 Step 4: measured
 success count and measured `heldCount` with the predicate neutered.
 Without that entry the concurrency test is not evidence.
 
-- [ ] **Step 5: Reconciliation clean**
+- [x] **Step 5: Reconciliation clean**
 
 ```bash
 pnpm holds:sweep
 pnpm holds:verify
 ```
 
-Expected: sweep prints `{"expired":0,"released":0}` (the seeded stale
-PENDING was already cleared by the manual smoke or an earlier sweep);
-verify reports drift 0 on every ticket type.
+Expected: the sweep clears whatever the most recent `pnpm db:seed` planted —
+`{"expired":1,"released":5}` right after a seed, `{"expired":0,"released":0}`
+on a second run. **`holds:verify` must report drift 0 both before and after**;
+that is the invariant, not the sweep's counts.
 
-- [ ] **Step 6: Manual end-to-end walk**
+- [ ] **Step 6: Manual end-to-end walk** *(owner — needs a browser)*
 
 ```bash
 pnpm dev
@@ -2220,7 +2223,7 @@ pnpm dev
   checkout URL open, submit → server rejects with `notPurchasable`; no
   `Order` row.
 
-- [ ] **Step 7: Update `plan/STATUS.md`**
+- [x] **Step 7: Update `plan/STATUS.md`**
 
 Move the Plan 04 bullet from "Next" into "Done", copying Plan 03's shape.
 Include:
@@ -2247,60 +2250,64 @@ git commit -m "feat: inventory holds, orders and oversell protection (Plan 04)"
 
 ## Definition of done
 
-- [ ] `Order` rows created only through `createOrder` / `createOrderWith` —
+- [x] `Order` rows created only through `createOrder` / `createOrderWith` —
       never from client input, never with a client-supplied `total`
-- [ ] `Order.reference` matches `/^KM-\d{4}-\d{6}$/`, from a Postgres sequence,
+- [x] `Order.reference` matches `/^KM-\d{4}-\d{6}$/`, from a Postgres sequence,
       unique under contention
-- [ ] `Order.currency` and `Order.attendeeNames` set at creation and never
+- [x] `Order.currency` and `Order.attendeeNames` set at creation and never
       changed; `attendeeNames` stored as `[{index, name}]`
-- [ ] `Order.accessToken` required for every order-page and cancel-action
+- [x] `Order.accessToken` required for every order-page and cancel-action
       lookup (compared with constant-time equality)
-- [ ] `TicketType.heldCount` equals `sum(PENDING orders' quantities)` for its
+- [x] `TicketType.heldCount` equals `sum(PENDING orders' quantities)` for its
       concert at all times (invariant 2) — verified by `pnpm holds:verify`
       and by Task 10 Test 3
-- [ ] `TicketType.soldCount + heldCount <= capacity` at all times
+- [x] `TicketType.soldCount + heldCount <= capacity` at all times
       (invariant 1) — verified by Task 10 Test 1 with a recorded negative
       control that shows the harness distinguishes real from fake
-- [ ] Hold lifecycle: `PENDING` releases via `cancelOrder`, `expireOrder`,
+- [x] Hold lifecycle: `PENDING` releases via `cancelOrder`, `expireOrder`,
       `failOrder`, all idempotent, discriminated result
-- [ ] Holds released on failure, cancellation and expiry; abandonment
+- [x] Holds released on failure, cancellation and expiry; abandonment
       reduces to expiry, mitigated by same-buyer dedupe
-- [ ] Admin cancelling an event releases every PENDING hold on it
-- [ ] `expireOrder`'s `beforeRelease` hook allows Plan 05 to cancel the
+- [x] Admin cancelling an event releases every PENDING hold on it
+- [x] `expireOrder`'s `beforeRelease` hook allows Plan 05 to cancel the
       Stripe PaymentIntent before releasing
-- [ ] `reclaimCapacityForOrder(orderId, tx)` exported for Plan 05's late-
+- [x] `reclaimCapacityForOrder(orderId, tx)` exported for Plan 05's late-
       succeed path — `EXPIRED → PENDING → PAID`
-- [ ] Sweep expires `PENDING` orders past `holdExpiresAt` AND
+- [x] Sweep expires `PENDING` orders past `holdExpiresAt` AND
       `stripePaymentIntentId IS NULL`, decrements `heldCount`, writes audit
-- [ ] `holds:sweep` and `holds:verify` CLIs work, safe to re-run,
+- [x] `holds:sweep` and `holds:verify` CLIs work, safe to re-run,
       `--fix` for verify writes audit entries
-- [ ] Checkout form submits through a server action, replacing the
+- [x] Checkout form submits through a server action, replacing the
       `PLAN-04:` stub at `CheckoutForm.tsx:59`
-- [ ] `maxPerOrder` enforced server-side in `createOrder`;
+- [x] `maxPerOrder` enforced server-side in `createOrder`;
       `checkoutSchema.quantity` capped at `.max(50)`
-- [ ] `soldOut`, `notPurchasable`, `aboveMax`, `rateLimited`,
-      `attendeesIncomplete` errors render in the buyer's language
-- [ ] Order confirmation page renders `holding`/`expired`/`cancelled` bands
+- [x] `soldOut`, `notPurchasable`, `aboveMax`, `rateLimited` (under
+      `checkout.*`) and the attendee-name gap (`validation.incomplete`, not
+      the drafted `attendeesIncomplete`) render in the buyer's language.
+      **Field-level** server errors required a fix beyond the plan: the form
+      submits natively, so react-hook-form never validates on submit and its
+      errors were the only ones rendered — see the Task 8 findings entry
+- [x] Order confirmation page renders `holding`/`expired`/`cancelled` bands
       with correct copy in three languages; token required
-- [ ] Page is `dynamic = 'force-dynamic'`, `fetchCache = 'default-no-store'`,
+- [x] Page is `dynamic = 'force-dynamic'`, `fetchCache = 'default-no-store'`,
       `robots.ts` disallows `/*/order/`
-- [ ] `expireOrder` called on page render when the hold is past its expiry,
+- [x] `expireOrder` called on page render when the hold is past its expiry,
       so "start over" is honest
-- [ ] Cancel-and-release works; second click no-ops without error
-- [ ] Currency-switcher hidden on `/koncert/*/zamowienie`
-- [ ] `db.ts` sets `transactionOptions` and `max: 10` with justifying
+- [x] Cancel-and-release works; second click no-ops without error
+- [x] Currency-switcher hidden on `/koncert/*/zamowienie`
+- [x] `db.ts` sets `transactionOptions` and `max: 10` with justifying
       comments
-- [ ] Task 10 uses a dedicated client with `maxWait: 60_000`, `timeout:
+- [x] Task 10 uses a dedicated client with `maxWait: 60_000`, `timeout:
       60_000`, `max: 20`
-- [ ] Task 10 Step 4's negative control was run and recorded
-- [ ] Findings log carries every discovery from the critique pass and any
+- [x] Task 10 Step 4's negative control was run and recorded
+- [x] Findings log carries every discovery from the critique pass and any
       new discoveries from execution
-- [ ] `03-purchase-flow.md` reflects the flat payload, server-action
+- [x] `03-purchase-flow.md` reflects the flat payload, server-action
       transport, and Plan 04/05/06 sweep split
-- [ ] `STATUS.md` reflects Plan 04 done; currency-freeze decision recorded
-- [ ] Clean-tree gate green; suite green twice
-- [ ] **No `Ticket` rows created anywhere in this plan** — invariant 3, Plan 05's
-- [ ] **No Stripe code anywhere in this plan** — the seam for Plan 05 is
+- [x] `STATUS.md` reflects Plan 04 done; currency-freeze decision recorded
+- [x] Clean-tree gate green; suite green twice
+- [x] **No `Ticket` rows created anywhere in this plan** — invariant 3, Plan 05's
+- [x] **No Stripe code anywhere in this plan** — the seam for Plan 05 is
       `createOrder` returning `{ orderId, reference, accessToken,
       holdExpiresAt }`, `expireOrder({ beforeRelease })`, and
       `reclaimCapacityForOrder`

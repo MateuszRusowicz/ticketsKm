@@ -78,4 +78,31 @@ describe('seed', () => {
     const admins = await db.adminUser.findMany()
     for (const a of admins) expect(a.email).toBe(a.email.toLowerCase())
   })
+
+  it('keeps heldCount and the held order consistent when re-seeded after a sweep', async () => {
+    // The bug this pins: heldCount was set unconditionally while the order
+    // upsert had `update: {}`, so re-seeding a database whose sweep had
+    // already expired that order left heldCount=5 with no PENDING order
+    // justifying it. The other tests in this file truncate first, so none of
+    // them can reach this state.
+    const order = await db.order.findUniqueOrThrow({ where: { reference: 'KM-0000-000001' } })
+    await db.order.update({ where: { id: order.id }, data: { status: 'EXPIRED' } })
+    await db.ticketType.updateMany({
+      where: { event: { slug: 'test-w-rezerwacji' } },
+      data: { heldCount: 0 },
+    })
+
+    execSync('pnpm exec tsx prisma/seed.ts', { stdio: 'pipe', env: { ...process.env } })
+
+    const ticketType = await db.ticketType.findFirstOrThrow({
+      where: { event: { slug: 'test-w-rezerwacji' } },
+    })
+    const pending = await db.orderItem.aggregate({
+      where: { ticketTypeId: ticketType.id, order: { status: 'PENDING' } },
+      _sum: { quantity: true },
+    })
+
+    expect(ticketType.heldCount).toBe(pending._sum.quantity ?? 0)
+    expect(ticketType.heldCount).toBe(5)
+  })
 })

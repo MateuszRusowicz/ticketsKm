@@ -1,4 +1,4 @@
-# Status — 2 September 2026
+# Status — 3 September 2026
 
 Where the project stands, for whoever picks it up next. Update this at the end
 of a working session; it is the fastest way back into context.
@@ -28,6 +28,46 @@ form, in three languages and two currencies, on `feat/plan-03-public-programme`.
 - `robots.txt` blocks indexing until launch
 - **No `Order` is created anywhere** — that is Plan 04
 
+**Plan 04 — Inventory: complete.** All 12 tasks. 34 test files, **290 tests**,
+green twice from a clean tree. Two manual smokes confirmed by the owner.
+
+The risky core is built and, more importantly, *proven*:
+
+- **A 900-seat concert cannot be oversold.** 1000 concurrent buyers → exactly
+  **900 succeeded, 100 rejected** with `InsufficientCapacityError`,
+  `heldCount === 900`, `soldCount === 0`, 900 `PENDING` orders.
+- **Negative control recorded** (the step that makes the above evidence rather
+  than decoration): with the capacity predicate commented out of
+  `holdCapacity`, the same test reported **1000 of 1000 succeeded** and failed
+  loudly. Restored, it passes. A test that fails identically either way proves
+  nothing.
+- **Capacity is JOINed from `Event` inside the UPDATE**, never passed in as a
+  caller value — an admin lowering capacity mid-checkout can no longer let a
+  hold through against a stale number. Preceded by `SELECT … FOR UPDATE` on
+  the Event row, which also serialises against `updateEvent`.
+- **Same-buyer dedupe**: a second submit for the same email and concert
+  returns the *same* reference and token instead of stranding a second
+  30-minute hold. This is what makes "holds are released on abandonment" true
+  rather than aspirational.
+- **`maxPerOrder` is enforced server-side**, so one crafted POST can no longer
+  hold an entire venue.
+- **The confirmation page and Cancel action require `?t=<accessToken>`.**
+  References come from a monotonic sequence and are enumerable by design, so
+  the token is the guard. A wrong token is indistinguishable from an unknown
+  reference.
+- **The sweep skips orders with a `stripePaymentIntentId`**, so Plan 05's
+  Przelewy24 / Klarna / SEPA orders — which sit in `processing` for minutes to
+  days — are never expired out from under a paying buyer.
+- **`pnpm holds:verify`** reconciles `heldCount` against the orders justifying
+  it, with `--fix`. Counter drift is the one failure that does not heal when a
+  hold lapses. It found a real seed bug on its first serious use.
+- **Currency freeze settled (Option B, 2 Sep 2026):** pinned at the order page,
+  switcher hidden on that route, so the summary and the charge cannot diverge.
+
+`plan/steps/04-inventory.md` carries a **Findings log with 40+ entries** —
+about a dozen from executing it, including two defects that would have stopped
+execution outright and three tests that passed for the wrong reason.
+
 **Plan 02 — Deployment: tasks 1–6 done, including 6a.**
 
 - Neon project in `eu-central-1`, branches `production` and `development`
@@ -48,7 +88,7 @@ and the link from the existing Wix site are connected only **after** that demo
 is accepted. Full reasoning in
 [`00-decisions.md`](00-decisions.md#delivery-sequence-a-test-mode-demo-before-the-domain).
 
-Demo scope is **Plan 04 + the payment half of Plan 05**:
+Demo scope is now **the payment half of Plan 05** — Plan 04 landed 3 Sep 2026:
 
 > buyer picks a concert → seats are held → pays with test BLIK / P24 / Klarna /
 > card → sees a confirmed order → capacity has decremented.
@@ -56,8 +96,32 @@ Demo scope is **Plan 04 + the payment half of Plan 05**:
 **Deliberately outside the demo:** ticket email, PDF, QR codes, the door
 scanner, promo codes and refunds. They stay in Plans 05–07.
 
-**Next up: merge `feat/plan-03-public-programme` into `development`, then
-write Plan 04 (inventory).**
+**Next up: Plan 05 (payments), checkout half only.**
+
+Write it the way Plan 04 was written — draft, then have subagents critique it
+before executing. That pass found nine blockers in Plan 04, including a test
+harness that could not distinguish a protected system from an unprotected one,
+and a hook ordering that would have cancelled a live buyer's payment.
+
+What Plan 04 leaves ready for it, deliberately:
+
+- `expireOrder(orderId, { beforeRelease })` — Plan 05 passes the Stripe
+  PaymentIntent cancellation here. It runs **after** the transition is claimed
+  and **before** the seats are released, inside the same transaction, so a
+  failed cancellation rolls the whole expiry back.
+- `reclaimCapacityForOrder(orderId, tx)` — the `EXPIRED → PENDING → PAID`
+  late-success path for asynchronous methods. It can fail with
+  `InsufficientCapacityError`, which is exactly when Plan 05 must refund
+  instead of fulfilling.
+- `failOrder(orderId, reason)` — no caller yet; wire it to
+  `payment_intent.payment_failed` and `.canceled`.
+- The sweep's `stripePaymentIntentId IS NULL` clause, already in place.
+- `Order.stripePaymentIntentId` exists and is unique; `StripeWebhookEvent`
+  exists for idempotency.
+
+Plan 05 also owns the sweep's schedule: Plan 04 ships `pnpm holds:sweep` and
+the callable function, but **nothing runs it automatically yet** — say so in
+the demo runbook.
 
 **Plan 04 is unblocked.** Hold duration settled 30 Aug 2026: **30 minutes,
 flat across all venues.** The accompanying requirement is that Plan 04 releases
