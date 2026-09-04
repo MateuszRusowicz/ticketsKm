@@ -43,7 +43,7 @@ finished; see [Once the app is done](#once-the-app-is-done).
 | **Vercel** | project serving `tickets-km.vercel.app` | Mateusz Rusowicz | region `fra1` |
 | **Neon** | project `krzyzowa-tickets`, `eu-central-1` | Mateusz Rusowicz | branches `production`, `development` |
 | **DNS** for `krzyzowa-music.eu` | needed for `bilety.` + email records | **unconfirmed — possibly Wix** | see Risks |
-| **Stripe** | not yet created | — | needed for Plan 05 |
+| **Stripe** | test-mode account `acct_1UBpQ6GVCpToPFr7`, country PL | Mateusz Rusowicz | created 4 Sep 2026. Test mode only — no business verification, no bank account. The live account for the Polish entity is a separate, still-open question |
 | **Resend** | not yet created | — | needed for Plan 05 |
 | **Uptime monitoring** | not yet configured | — | Plan 02 Task 8 |
 
@@ -197,6 +197,40 @@ time — redeploy from a current branch instead.
 `main` is now 10 commits behind and is no longer what Vercel serves. Decide
 whether it still has a role.
 
+### Operations — payments
+
+**How to spot payment ALERTs.** All three payment-related cron jobs write
+fixed-format strings to stderr, which Vercel captures into runtime logs alongside
+stdout. Response bodies never reach logs — the grep must target the stderr string:
+
+```
+SWEEP-PRIMARY expired=<e> released=<r> failed=<f>
+SWEEP-ASYNC   expired=<e> released=<r> failed=<f>
+RECONCILE     alerts=<n> failed=<f> deadlettered=<d>
+```
+
+In the Vercel dashboard: **Project → Logs → Runtime** (filter by Function if
+needed). Search for `alerts=[1-9]`, `failed=[1-9]`, or `deadlettered=[1-9]`.
+Any non-zero value warrants investigation.
+
+**Where the crons run.** Three routes, all in `vercel.json`, all Vercel Pro
+(5-minute schedule requires Pro — Hobby silently downgrades to daily):
+
+| Route | Schedule | Does |
+|---|---|---|
+| `/api/cron/sweep-primary` | Every 5 min | Expires holds where PI is not in-flight; no Stripe call |
+| `/api/cron/sweep-async` | Every 5 min | Expires async-method holds past their timeout (6 h / 5 days SEPA) |
+| `/api/cron/reconcile` | Every 15 min | Finds PAID orders missing tickets, stuck refunds, un-reprocessed webhook events |
+
+All cron routes require the `Authorization: Bearer <CRON_SECRET>` header.
+Vercel sets this automatically when the cron fires; the value in production must
+differ from the local `.env` value.
+
+**This alerting is an explicit stopgap** (acknowledged 4 Sep 2026) until Plan 07
+ships an admin dashboard that surfaces ALERT-severity audit log entries. Until
+then, the recommendation on a sale day is to keep a Vercel log stream open in
+a browser tab. Automated notification (Sentry, Slack) is Plan 08 scope.
+
 ### Rolling back a bad deploy
 
 Vercel → Deployments → pick the last good one → **Promote to Production**.
@@ -295,14 +329,22 @@ only once that demo is accepted.
 4. Plan 02's tasks 7–9 (domain, backups, database cutover) land at launch, as
    does the Wix link-through.
 
-### Blocking Plan 05 — all four are yours
+### Blocking Plan 05 — **three of four cleared 4 Sep 2026**
 
-| | What | Why it matters |
+| | What | State |
 |---|---|---|
-| 1 | **Rename the Stripe keys.** `.env` has `STRIPE_API_KEY` + `STRIPE_SECRET_KEY`; the plan expects `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`. Confirm they are test keys (`pk_test_` / `sk_test_`). | `.env` is git-ignored and has never been committed — verified 4 Sep 2026. Keep it that way. |
-| 2 | **Create the webhook secret.** It does not exist yet and cannot: `stripe listen` produces one for local work, and registering the endpoint in the Stripe dashboard produces a **different** one for production. | Without it the app refuses to boot — the env schema rejects both empty and placeholder values. |
-| 3 | **Upgrade Vercel to Pro.** | On Hobby, cron granularity is once daily, so **both hold-sweeps silently never run** and abandoned seats are never released. Hobby also forbids commercial use. |
-| 4 | **Set `NEXT_PUBLIC_SITE_URL` on Vercel** to `https://tickets-km.vercel.app`. | The payment `return_url` is built from it. If it still reads `localhost:3000`, every BLIK / Przelewy24 / Klarna buyer is redirected to their own machine — four of the six demo flows, failing only in production. |
+| 1 | **Stripe keys.** `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, all test-mode, all in **`.env`**. | ✅ done. They arrived misnamed and swapped — the secret sat in `STRIPE_API_KEY` and the publishable in `STRIPE_SECRET_KEY`. **Verify the prefix, never the name.** `.env` is git-ignored and has never been committed. |
+| 2 | **Webhook secret.** | ✅ local value in place, from `stripe listen`. Production needs a **different** `whsec_` from registering the endpoint in the dashboard — Plan 05 Task 15. |
+| 3 | **Upgrade Vercel to Pro.** | ⬜ **outstanding — the last owner item.** On Hobby, cron granularity is once daily, so **both hold-sweeps silently never run** and abandoned seats are never released. Hobby also forbids commercial use. |
+| 4 | **Set `NEXT_PUBLIC_SITE_URL` on Vercel** to `https://tickets-km.vercel.app`. | ⬜ Plan 05 Task 15. The payment `return_url` is built from it. If it still reads `localhost:3000`, every BLIK / Przelewy24 / Klarna buyer is redirected to their own machine — four of the six demo flows, failing only in production. |
+
+**Local Stripe setup, for whoever rebuilds it.** All Stripe variables live in
+`.env` (not `.env.local` — the plan's original wording was wrong and is
+corrected). The Stripe CLI is **not in Ubuntu's apt repos**; it installs as a
+binary into `~/.local/bin`. At `stripe login` choose **test mode, not
+sandbox** — a sandbox is a separate account that also issues `sk_test_` keys,
+so the mismatch is invisible until every webhook fails signature verification.
+`stripe config --list` must show `acct_1UBpQ6GVCpToPFr7`.
 
 Every plan is written just before it is executed, so it describes the code that
 actually exists. **Have each one critiqued by subagents before executing it** —

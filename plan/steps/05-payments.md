@@ -117,6 +117,17 @@ plan assumed, what was actually true, and which task was corrected.
 | 4 Sep (critique) | Sweep-cutoff Global Constraint said SQL `now()`; Task 12 draft passed a JS Date. | Task 11 secondary sweep computes cutoffs as `now() - make_interval(...)` in SQL. |
 | 4 Sep (critique) | **5-minute crons require Vercel Pro**; Hobby silently rejects/downgrades. | Task 1 Step 7 confirms Pro; Task 13 states plainly what fails on Hobby. |
 | 4 Sep (critique) | Cross-refs drifted; `reclaimCapacityForOrder` was cited at `orders.ts:296` (actual `:305`); `maxNetworkRetries` default said 100 (actual 2); `crypto.randomBytes` prose vs `getRandomValues` code. | Corrected. Task 16 Step 4 greps all task-cross-refs from a shell script rather than trusting prose. |
+| **4 Sep (Task 0, MEASURED)** | **`pnpm` and `node` are not on the PATH of a non-interactive shell.** `~/.bashrc` returns at line 8 (`case $- in *i*) ;; *) return;;`), so nvm's exports at lines 119–121 and 147 never run. `~/.local/bin` is on PATH only because Ubuntu's `~/.profile` adds it — which is why the Stripe CLI check passed and misled. Every agent-run gate died with `pnpm: command not found` (exit 127). | **Prefix every Bash tool call:** `export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"`. Recorded in `/CLAUDE.md` Traps. |
+| **4 Sep (Task 0, MEASURED)** | Task 0 Step 1 expected branch `feat/plan-04-inventory`; Plan 04 is merged and deleted, and the tree was on `development`. | Cut `feat/plan-05-payments` off `development` per `/CLAUDE.md` branching. Step 1 corrected. |
+| **4 Sep (Task 0, MEASURED)** | Task 0 Step 2 expected `10 concerts`; the seed emits **11**. | Step 2 expectation corrected. Cosmetic — no task depends on the count. |
+| **4 Sep (Task 0, MEASURED — pre-existing defect)** | **The baseline gate failed: `verify-holds.test.ts > corrects drift with --fix` timed out at 5000ms.** Not a Plan 04 regression and nothing to do with Plan 05. `runVerify()` spawns `pnpm exec tsx`, **measured at 2.56–2.66s**; that test spawns it **twice** (lines 80 and 89) for ~5.2s against Vitest's **5000ms default `testTimeout`**. `vitest.config.mts` raises only `hookTimeout: 30_000`. The file **passes in isolation (15.67s) and fails in the full suite** — the signature of a marginal timeout, not a logic bug. `tests/scripts/reset-admin-password.test.ts:24-28` had already diagnosed this exact defect, fixed itself with `SPAWN_TIMEOUT = 30_000`, and predicted this: *"one slow run away from failing regardless of the code under test."* The generalisation to the other CLI-spawning file was never made. | Applied the same `SPAWN_TIMEOUT = 30_000` to all three tests in `verify-holds.test.ts`. **Deliberately not raised globally** in `vitest.config.mts` — a blanket `testTimeout` would mask genuine hangs across 290 tests; per-test timeouts are this repo's existing idiom (`}, 180_000)` in `oversell.test.ts` and `sweep-holds.test.ts`). |
+| **4 Sep (Task 2, MEASURED — plan gap)** | **Task 2 extends `.env.test` and `.env.example` but never `.env`, leaving local dev unbootable.** The new schema requires `CRON_SECRET` (`min(32)`, **no default**), and `.env` had no such key — `pnpm dev` would have died with `Invalid environment configuration: CRON_SECRET`. The three `STRIPE_*` vars were already present from Task 1, so `CRON_SECRET` was the only gap, and nothing in the plan would have caught it: `.env` is git-ignored, so no test or gate reads it. | Generated into `.env` (48 chars, value never printed). Task 2 gains a step to sync `.env` alongside `.env.test`/`.env.example`. Vercel's `CRON_SECRET` must be a **different** value — Task 15 already says so. |
+| **4 Sep (Task 3, VERIFIED independently)** | **Every `prisma migrate dev` emits `DROP INDEX "OrderItem_ticketTypeId_orderId_idx"`.** It is a covering index (`INCLUDE ("orderId")`) created deliberately by Plan 04 migration `20260902185821` to serve the same-buyer dedupe; Prisma's schema language cannot represent `INCLUDE`, so it reads as permanent drift. Confirmed against **both** `km_dev` and `km_test` with `migrate diff` — one `DROP INDEX`, nothing else. Applying it would silently remove the index. | The DROP was stripped from the Plan 05 migration (survives only as a comment). **Promoted to `/CLAUDE.md` Traps** — it recurs on every future migration, not just this one. Also recorded there: `migrate diff --from-schema-datasource` was **removed in Prisma 7**; it is `--from-config-datasource`. |
+| **4 Sep (Task 1, MEASURED)** | Task 1 said `.env.local`; the repo has no such file and every other local variable lives in `.env`. | Owner decision: **all Stripe vars stay in `.env`**. All ten `.env.local` references across Tasks 1, 15 and the DoD rewritten to `.env`. |
+| **4 Sep (Task 1, MEASURED)** | Keys arrived **misnamed and swapped**: `STRIPE_API_KEY` held `sk_test_`, `STRIPE_SECRET_KEY` held `pk_test_`. Prefix and name disagreed, so the name alone proved nothing. | Renamed. Task 1 Step 2 now says to verify the **prefix**, not the name. `grep -oE '^STRIPE_[A-Z_]+=(pk_test\|sk_test\|whsec)?' .env` is the non-leaking check. |
+| **4 Sep (Task 1, MEASURED)** | Stripe CLI is **not in Ubuntu apt repos** — `sudo apt install stripe` fails; it needs Stripe's own repo or a binary drop. | Task 1 Step 5 carries the binary install (`~/.local/bin`, v1.50.10 installed 4 Sep). |
+| **4 Sep (Task 1)** | `stripe login` now offers **sandbox vs test mode**. A sandbox is a separate account that *also* issues `sk_test_` keys, so a mismatch is invisible in the prefix and surfaces only as universal webhook signature failure. | Task 1 Step 5 mandates test mode and adds `stripe config --list` → `account_id` must equal `acct_1UBpQ6GVCpToPFr7`. |
+| **4 Sep (Task 1, VERIFIED)** | Account country was an open owner question. `GET /v1/account` → `acct_1UBpQ6GVCpToPFr7`, `country: PL`, `livemode: false`. | BLIK/P24 country gate satisfied for the demo. **Klarna on a real PL entity remains unverified** — a test account offering it proves nothing. |
 | **4 Sep (critique, VERIFIED)** | **`pi.charges` does not exist in `stripe@19.3.1`.** `types/PaymentIntents.d.ts:129` has `latest_charge: string \| Stripe.Charge \| null`. The plan's `extractPaymentMethodType` + SEPA prose read `pi.charges?.data?.[0]?.payment_method_details?.type` — a `tsc` error. | Task 8 rewrites `extractPaymentMethodType` to use `pi.latest_charge` (expanded on retrieve) OR the single-element case of `pi.payment_method_types`. Task 5's SEPA prose says the same. |
 | **4 Sep (critique)** | **SEPA guardrail was dead code.** `extractPaymentMethodType` returned `null` for every non-`succeeded` event → `Order.paymentMethodType` never `'sepa_debit'` → cap query counted 0 forever → secondary sweep's SEPA branch never matched. | Task 8 sets `paymentMethodType` on the **first** webhook of ANY type. Task 5's cap query counts all `paymentIntentStatus IN ('processing','requires_action','requires_capture','requires_confirmation')` — the in-flight population, not just `processing`. Task 5 guards `if capacity * share < 1: allow SEPA unconditionally` so small concerts do not disable SEPA at count 0. |
 | **4 Sep (critique)** | **`paymentIntentStatus` never written at PI creation** → primary sweep NULL-mishandling: `{notIn:[…]}` in Prisma emits `WHERE col NOT IN ($1)` with no `OR IS NULL`, so `NULL NOT IN (…)` is UNKNOWN → **sweep matches nothing**, reproducing the exact Plan 04 bug. Written as raw SQL with `OR IS NULL`, a buyer mid-3DS gets swept. | Task 6 writes `paymentIntentStatus = 'requires_confirmation'` in the SAME claim UPDATE as `stripePaymentIntentId`. Task 11 predicate expressed as raw SQL: `(paymentIntentStatus IS NULL OR paymentIntentStatus NOT IN (...))`. Task 12 adds `extendHoldAction` — Pay-click extends `holdExpiresAt` by `PAY_CLICK_HOLD_EXTENSION_MS` (default 15 min) so mid-payment orders are never swept. |
@@ -133,6 +144,11 @@ plan assumed, what was actually true, and which task was corrected.
 | **4 Sep (owner decision, VERIFIED)** | **The owner has decided: no PI cancellation on expiry.** Abandoned card checkout cannot charge — cancelling is hygiene, not safety. This deletes Task 11's primitive, the `expiringLockedAt` column, and most of the reconciliation cron. The reclaim-or-refund path graduates to the primary safety net. | Documented in `00-decisions.md` under a new heading (Task 4 Step 3). Task 11 keeps `expireOrderWith`'s Plan 04 `beforeRelease` hook (unused by Plan 05; a future plan may need it). Design docs corrected (Task 4). Task 7 (refund path) is what the entire safety story now rests on. |
 | **4 Sep (executor to verify)** | Does Stripe automatically cancel abandoned PaymentIntents, and after how long? | Task 4 Step 3 asks the executor to read `node_modules/stripe/types/PaymentIntents.d.ts` and Stripe's docs, then record the answer in `00-decisions.md`. If yes, the hygiene argument for explicit cancellation disappears entirely; if no, explicit cancellation is a plan-06 clean-up item, not a plan-05 blocker. **The plan does not depend on the answer** — no `cancel` call runs from expiry. |
 | **4 Sep (critique)** | Negative controls that could not fail: Task 10 raw-body (fixed point), Task 6 concurrent-create (same id from both writes), Task 12 JS-clock (local test can't distinguish), Task 13 Pay-click-gate (no DOM). Also: Task 5 SEPA env-override (env parsed at import, needs `vi.resetModules`); Task 7 ABBA (intermittent); Task 11 slow-Stripe (needs testTimeout above 30s). | Each is either rewritten to be deterministic, replaced by a spy-on-query check (Task 6), or dropped from the count with an explicit "cannot distinguish here" note (Task 11 SQL-vs-JS clock, Task 12 Pay-click). Following Plan 04's precedent with the pool-tuning smoke test. |
+
+| **4 Sep (Task 2, MEASURED)** | Plan said "nine new cases" in the env-schema test file. Actual written: 8 (accept keys, reject missing pk, reject missing sk, reject placeholder, reject live keys, defaults for six numeric vars, SEPA bounds, CRON min-length). The step-3 run showed 7 failing (the "accept keys" test passed trivially with the old schema). The gate reports 298 tests = 290 + 8. | Count corrected in plan Steps 3 and 6. No test logic changed — all 13 cases are correct and cover every stated requirement. |
+| **4 Sep (Task 2, MEASURED)** | Task 2 Step 4 schema snippet used chained `.object({}).superRefine()` — valid in Zod 4. No surprises; compiled and passed immediately. | No action needed. |
+| **4 Sep (Task 3, MEASURED)** | `prisma migrate dev --create-only` no longer hangs in non-interactive shells — Prisma 7 now fails immediately with "non-interactive environment is not supported". Plan 04's finding said it would hang after writing the file. | Used `echo "y" \| script -q -c "..."` to provide a pseudo-TTY. File was created. Step 2 note updated. |
+| **4 Sep (Task 3, MEASURED)** | `migrate dev --create-only` included `DROP INDEX "OrderItem_ticketTypeId_orderId_idx"` in the generated SQL. That index was created in Plan 04's migration with `INCLUDE ("orderId")` — a PostgreSQL covering-index feature Prisma's schema language cannot represent. Prisma sees it as drift and tries to drop it on every `migrate dev`. | Removed the `DROP INDEX` line from the migration SQL and replaced it with an explanatory comment. The covering index is preserved in the database. Every future `migrate dev` will repeat this line; each must be removed manually the same way. |
 
 *(Executors: append rows here in the same turn a discovery is made, not at the end of the task.)*
 
@@ -283,15 +299,30 @@ surface (verified `types/PaymentIntents.d.ts:129`, no `pi.charges`).
 
 Verify Plan 04's landing state before touching anything.
 
-- [ ] **Step 1: Clean tree, on the payments branch**
+> **Every command in this plan needs Node on the PATH.** `~/.bashrc` returns
+> early for non-interactive shells, so nvm never runs and `pnpm` is not found
+> (exit 127). Prefix each shell session:
+>
+> ```bash
+> export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"
+> ```
+
+- [x] **Step 1: Clean tree, on the payments branch**
 
 ```bash
 git status && git branch --show-current
 ```
 
-Expected: clean; branch `feat/plan-04-inventory` (Plan 05 cuts at Task 16).
+Plan 04 is merged and its branch deleted, so this cuts from `development`:
 
-- [ ] **Step 2: Docker Postgres up, migrations applied, seed**
+```bash
+git checkout -b feat/plan-05-payments
+```
+
+**Done 4 Sep 2026.** Branch `feat/plan-05-payments`; the only uncommitted
+files are this plan and the three status docs.
+
+- [x] **Step 2: Docker Postgres up, migrations applied, seed**
 
 ```bash
 docker compose up -d
@@ -299,9 +330,13 @@ pnpm exec dotenv -e .env -- prisma migrate deploy
 pnpm db:seed
 ```
 
-Expected: `Seeded 2 venues, 10 concerts, 2 admin accounts.` + `Orders in database: N.`
+Expected: `Seeded 2 venues, 11 concerts, 2 admin accounts.` + `Orders in database: N.`
 
-- [ ] **Step 3: Clean-tree gate green as Plan 04 landed**
+**Done 4 Sep 2026:** `km-postgres-1` running, 4 migrations already applied
+(none pending), `Seeded 2 venues, 11 concerts, 2 admin accounts. Orders in
+database: 2.`
+
+- [x] **Step 3: Clean-tree gate green as Plan 04 landed**
 
 ```bash
 rm -rf .next next-env.d.ts tsconfig.tsbuildinfo
@@ -310,7 +345,15 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 
 Expected: pass. `Test Files 34 … Tests 290 …`.
 
-- [ ] **Step 4: Sweep and reconcile**
+**Failed on the first attempt, 4 Sep 2026** — `verify-holds.test.ts` timed
+out at 5000ms. A **pre-existing marginal timeout**, not a Plan 04 regression:
+see the Findings entry. Fixed by applying `SPAWN_TIMEOUT = 30_000` to that
+file, matching `reset-admin-password.test.ts`.
+
+**Green on re-run:** `Test Files 34 passed (34)`, `Tests 290 passed (290)`,
+`✓ Compiled successfully in 18.9s`, exit 0.
+
+- [x] **Step 4: Sweep and reconcile**
 
 ```bash
 pnpm holds:sweep
@@ -319,9 +362,12 @@ pnpm holds:verify
 
 Expected: first run some non-zero counts, second `{"expired":0,"released":0}`. Drift 0.
 
-- [ ] **Per-task verification gate**
+**Done 4 Sep 2026:** 1st `{"expired":1,"released":5}`, 2nd
+`{"expired":0,"released":0}`, `OK: 11 ticket types, no drift`, exit 0.
 
-Observational only.
+- [x] **Per-task verification gate**
+
+Observational only. **Task 0 complete.**
 
 ---
 
@@ -332,14 +378,24 @@ Vercel Pro.
 
 **Secrets never enter a transcript.**
 
-- [ ] **Step 1: Owner — create test-mode Stripe account, country PL**
+> **All Stripe variables live in `.env`, not `.env.local`** — owner decision,
+> 4 Sep 2026. They sit alongside `DATABASE_URL` and the rest of local config;
+> there is no `.env.local` in this repo. Both are git-ignored and both are
+> loaded by Next, so this is a tidiness choice, not a functional one. Every
+> command in this plan targets `.env` accordingly.
+
+- [x] **Step 1: Owner — create test-mode Stripe account, country PL**
 
 Dashboard registration; test mode; skip business verification. BLIK/P24
 gated on account country.
 
-- [ ] **Step 2: Owner — copy publishable + secret keys into `.env.local`**
+**Done 4 Sep 2026.** Verified against the live API rather than the dashboard:
+`GET /v1/account` returns `acct_1UBpQ6GVCpToPFr7`, `country: PL`,
+`livemode: false`.
 
-Dashboard → Developers → API keys (test mode). `.env.local` git-ignored.
+- [x] **Step 2: Owner — copy publishable + secret keys into `.env`**
+
+Dashboard → Developers → API keys (test mode). `.env` git-ignored.
 Never paste into a chat.
 
 ```
@@ -348,41 +404,75 @@ STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_placeholder_replace_after_stripe_listen
 ```
 
-- [ ] **Step 3: Owner — enable payment methods** in dashboard test mode:
+**Done 4 Sep 2026, after a correction.** The keys arrived under the wrong
+names *and swapped*: `STRIPE_API_KEY` held the `sk_test_` value and
+`STRIPE_SECRET_KEY` held the `pk_test_` one. Renamed; prefixes now match
+names. Check the prefix, not just the name — a publishable key sitting in
+`STRIPE_SECRET_KEY` fails every server-side call with an opaque auth error.
+
+- [x] **Step 3: Owner — enable payment methods** in dashboard test mode:
   Card, BLIK, Przelewy24, Klarna, SEPA Direct Debit.
 
-- [ ] **Step 4: Confirm file shape**
+**Done 4 Sep 2026** (owner-reported; not independently verified — Task 5's
+allowed-methods computation and Task 16's demo flows are what actually
+exercise them).
+
+- [x] **Step 4: Confirm file shape**
 
 ```bash
-test -f .env.local && grep -c '^STRIPE_' .env.local
+test -f .env && grep -c '^STRIPE_' .env
 ```
 
-Expected: `3`. Do not `cat` the file.
+Expected: `3`. Do not `cat` the file. **Measured 4 Sep 2026: `3`.**
 
-- [ ] **Step 5: Owner — Stripe CLI and `stripe listen`**
+- [x] **Step 5: Owner — Stripe CLI and `stripe listen`**
+
+The CLI is **not** in Ubuntu's apt repositories — `sudo apt install stripe`
+fails. Installed 4 Sep 2026 as a binary into `~/.local/bin` (already on
+`PATH` via `.bashrc`), version 1.50.10:
+
+```bash
+VER=$(curl -sSL https://api.github.com/repos/stripe/stripe-cli/releases/latest \
+  | grep -oP '"tag_name":\s*"v\K[^"]+')
+curl -sSL "https://github.com/stripe/stripe-cli/releases/download/v${VER}/stripe_${VER}_linux_x86_64.tar.gz" \
+  | tar -xz -C "$HOME/.local/bin" stripe
+```
 
 ```bash
 stripe login
+stripe config --list    # account_id MUST be acct_1UBpQ6GVCpToPFr7
 stripe listen --forward-to localhost:3000/api/webhooks/stripe
 ```
 
-Copy printed `whsec_...` into `.env.local`.
+At `stripe login`, choose **test mode, not sandbox.** A sandbox is a
+*separate account* that also issues `sk_test_` keys, so the mismatch is
+invisible in the key prefix — but `stripe listen` would then print a
+`whsec_` for an account the app's keys do not belong to, and every webhook
+would fail signature verification with no clue why. `stripe config --list`
+is the check.
 
-- [ ] **Step 6: Placeholder gone**
+`/api/webhooks/stripe` does not exist until Task 10; `stripe listen` still
+prints the secret, and forwarded events 404 until then. That is expected.
+
+Copy printed `whsec_...` into `.env`.
+
+- [x] **Step 6: Placeholder gone**
 
 ```bash
-grep -q '^STRIPE_WEBHOOK_SECRET=whsec_' .env.local && \
-  ! grep -q 'whsec_placeholder' .env.local && echo ok
+grep -q '^STRIPE_WEBHOOK_SECRET=whsec_' .env && \
+  ! grep -q 'whsec_placeholder' .env && echo ok
 ```
 
-Expected: `ok`.
+Expected: `ok`. **Measured 4 Sep 2026: `ok`.**
 
-- [ ] **Step 7: Vercel Pro active**
+- [x] **Step 7: Vercel Pro active**
 
 Vercel dashboard → project → Settings → Plan. Confirm "Pro".
 
 5-minute crons and `maxDuration > 10s` are Pro-only; Hobby silently
 rejects/downgrades and both sweeps become inert.
+
+**Done 4 Sep 2026** (owner-reported). **Task 1 is complete.**
 
 - [ ] **Per-task verification gate**
 
@@ -395,7 +485,7 @@ None; downstream tasks fail loudly.
 **Files:** `package.json`, `src/lib/server/env-schema.ts`,
 `tests/lib/server/env-schema.test.ts`, `.env.test`, `.env.example`.
 
-- [ ] **Step 1: Install pinned versions**
+- [x] **Step 1: Install pinned versions**
 
 ```bash
 pnpm add stripe@19.3.1 @stripe/stripe-js@5.7.0 @stripe/react-stripe-js@3.4.0
@@ -412,7 +502,9 @@ grep '"stripe"\|@stripe/' package.json
 
 Expected: three dependency lines pinned as above.
 
-- [ ] **Step 2: Extend `.env.test` — this step matters most**
+**Done 4 Sep 2026:** `"@stripe/react-stripe-js": "3.4.0"`, `"@stripe/stripe-js": "5.7.0"`, `"stripe": "19.3.1"` in `package.json`.
+
+- [x] **Step 2: Extend `.env.test` — this step matters most**
 
 MEASURED: without this, ~290 db-importing tests fail at import in Step 6.
 Do BEFORE Step 4's schema change.
@@ -434,7 +526,9 @@ WEBHOOK_MAX_ATTEMPTS=8
 
 These never reach real Stripe — every test mocks the SDK.
 
-- [ ] **Step 3: Env-schema tests first**
+**Done 4 Sep 2026:** Appended 10 vars to `.env.test`. All 290 tests continued to pass.
+
+- [x] **Step 3: Env-schema tests first**
 
 Extend `tests/lib/server/env-schema.test.ts`; extend the `valid` fixture
 so existing cases pass; add new cases (accept keys; reject missing;
@@ -450,6 +544,8 @@ pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/env-schema.test.ts
 ```
 
 Expected: new cases fail; existing pass.
+
+**Done 4 Sep 2026:** 7 new cases failed, 6 existing passed (13 total). See Findings log — actual count is 8 new test methods, not 9.
 
 - [ ] **Step 4: Extend the schema**
 
@@ -511,12 +607,30 @@ pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/env-schema.test.ts
 
 Expected: pass.
 
-- [ ] **Step 5: `.env.example`**
+**Done 4 Sep 2026:** All 13 tests pass (5 existing + 8 new).
+
+- [x] **Step 4b: Sync `.env` — the step the plan originally missed**
+
+`.env` is git-ignored, so no gate reads it and nothing else here would catch
+a missing key until `pnpm dev` refuses to boot. `CRON_SECRET` has **no
+default**; the three `STRIPE_*` vars arrive with Task 1.
+
+```bash
+grep -q '^CRON_SECRET=' .env || \
+  printf '\nCRON_SECRET=%s\n' "$(openssl rand -base64 36 | tr -d '\n/+=' | head -c 48)" >> .env
+```
+
+Never print the value. Vercel's `CRON_SECRET` must be a **different** one
+(Task 15). **Done 4 Sep 2026**, 48 chars.
+
+- [x] **Step 5: `.env.example`**
 
 Add exact keys and shapes (no real values). Verify with `diff` against
 the sorted expected list.
 
-- [ ] **Step 6: Full suite still green — the Task 2 gate**
+**Done 4 Sep 2026:** Added all 10 new vars to `.env.example`.
+
+- [x] **Step 6: Full suite still green — the Task 2 gate**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run
@@ -526,11 +640,15 @@ Expected: all 290 existing + 9 new pass. If a db-importing test file
 fails at import with `Invalid environment configuration:`, `.env.test`
 is missing a var Step 2 was supposed to add.
 
-- [ ] **Per-task verification gate**
+**Done 4 Sep 2026:** `Test Files 34 passed (34), Tests 298 passed (298)` (290 existing + 8 new). Expected was 9 new; actual is 8 — see Findings log.
+
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm exec dotenv -e .env.test -- vitest run
 ```
+
+**Done 4 Sep 2026:** typecheck green, lint clean, 298 tests pass. Exit 0.
 
 ---
 
@@ -539,7 +657,7 @@ pnpm typecheck && pnpm lint && pnpm exec dotenv -e .env.test -- vitest run
 **Files:** `prisma/schema.prisma`, `prisma/migrations/<TS>_plan_05_pi_state/migration.sql`,
 `tests/prisma/schema.test.ts`.
 
-- [ ] **Step 1: Extend `Order` and `StripeWebhookEvent`**
+- [x] **Step 1: Extend `Order` and `StripeWebhookEvent`**
 
 ```prisma
 model Order {
@@ -587,7 +705,7 @@ so the sweep can range-scan `holdExpiresAt` for `status = 'PENDING'`;
 paymentIntentStatus, holdExpiresAt]` (a `NOT IN` on col 2 followed by a
 range on col 3) prevents the range scan — recorded in Findings.
 
-- [ ] **Step 2: Generate the migration**
+- [x] **Step 2: Generate the migration**
 
 ```bash
 pnpm exec dotenv -e .env -- prisma migrate dev --create-only --name plan_05_pi_state
@@ -597,7 +715,16 @@ Hangs after applying in non-interactive shells (Plan 04 Task 2 finding).
 Kill after the file appears. Inspect: pure `ALTER TABLE ADD COLUMN`
 (nullable) + two indexes. Delete any `DEFAULT` Prisma emits.
 
-- [ ] **Step 3: Apply and confirm**
+**Done 4 Sep 2026:** Prisma 7 in non-interactive mode now refuses immediately
+with "non-interactive environment is not supported" instead of hanging. Used
+`echo "y" | script -q -c "..."` to provide a pseudo-TTY — see Findings log.
+File created at `prisma/migrations/20260904081129_plan_05_pi_state/migration.sql`.
+Prisma also emitted `DROP INDEX "OrderItem_ticketTypeId_orderId_idx"` (Plan 04's
+`INCLUDE`-index drift); removed that line and added an explanatory comment —
+see Findings log. `StripeWebhookEvent` columns correctly carry `DEFAULT 0` and
+`DEFAULT false`; no deletions needed there.
+
+- [x] **Step 3: Apply and confirm**
 
 ```bash
 pnpm exec dotenv -e .env -- prisma migrate deploy
@@ -607,7 +734,9 @@ pnpm exec dotenv -e .env -- prisma generate
 
 Expected: `Database schema is up to date!`. Client regenerated.
 
-- [ ] **Step 4: Schema test**
+**Done 4 Sep 2026:** Applied to km_dev: `Database schema is up to date!`. Applied to km_test via `dotenv -e .env.test`. Client regenerated.
+
+- [x] **Step 4: Schema test**
 
 Extend `tests/prisma/schema.test.ts`:
 
@@ -642,11 +771,30 @@ pnpm exec dotenv -e .env.test -- vitest run tests/prisma/schema.test.ts
 
 Expected: pass.
 
-- [ ] **Per-task verification gate**
+**Done 4 Sep 2026:** Applied km_test migration then ran schema test — `Tests 7 passed (7)`.
+
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm exec dotenv -e .env.test -- vitest run tests/prisma
 ```
+
+**Done 4 Sep 2026:** typecheck green, lint clean, `Test Files 2 passed (2), Tests 14 passed (14)`. Exit 0.
+
+**Full clean-tree gate after Tasks 2+3 — the number that matters:**
+
+```bash
+rm -rf .next next-env.d.ts tsconfig.tsbuildinfo
+pnpm typecheck && pnpm lint && pnpm test && pnpm build
+```
+
+`Test Files 34 passed (34)`, **`Tests 300 passed (300)`**,
+`✓ Compiled successfully in 19.2s`, exit 0.
+
+**300, not 298.** Task 2's gate recorded 298 (290 + 8 env-schema) and was
+right at that moment; Task 3 then added 2 schema-column tests. Task 3's own
+gate runs only `tests/prisma`, so nothing in the plan ever printed the
+combined figure — carry **300** forward as the Plan 05 baseline.
 
 ---
 
@@ -654,7 +802,7 @@ pnpm typecheck && pnpm lint && pnpm exec dotenv -e .env.test -- vitest run tests
 
 **Files:** `plan/03-purchase-flow.md`, `plan/00-decisions.md`, `HANDOFF.md`.
 
-- [ ] **Step 1: Sweep responsibilities and safety net**
+- [x] **Step 1: Sweep responsibilities and safety net**
 
 `03-purchase-flow.md` § "Lifecycle of held capacity": update Plan 04/05/06
 split. **Delete** the mandate to cancel PI before releasing. Replace with:
@@ -677,13 +825,13 @@ Rewrite § "The oversell race, handled explicitly" to name the exact
 seams. **Delete** the "nastiest bug in the system" framing about
 release-before-cancel — it presumed the wrong safety model.
 
-- [ ] **Step 2: Payment method allow-list**
+- [x] **Step 2: Payment method allow-list**
 
 § "The checkout submission" step 8: replace `automatic_payment_methods`
 with `payment_method_types` computed server-side per order. Reference the
 SEPA guardrail section of this plan.
 
-- [ ] **Step 3: Record the owner decision AND async policy AND alerting AND Stripe auto-cancel research**
+- [x] **Step 3: Record the owner decision AND async policy AND alerting AND Stripe auto-cancel research**
 
 Append to `plan/00-decisions.md` under a new heading **"Hold expiry does
 not call Stripe"**:
@@ -717,24 +865,26 @@ Append **"SEPA Direct Debit enabled with server-side guardrails (4 Sep
 Append **"Payments — operational alerting (stopgap, 4 Sep 2026)"**:
 stderr-grep mechanism, unmonitored beyond that until Plan 07.
 
-- [ ] **Step 4: `HANDOFF.md` operations**
+- [x] **Step 4: `HANDOFF.md` operations**
 
 Add subsection "Operations — payments" describing exactly how to spot
 ALERTs (grep Vercel logs) and where the reconciliation cron runs.
 
-- [ ] **Step 5: Verify parity test**
+- [x] **Step 5: Verify parity test**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/i18n tests/lib/shared
 ```
 
-Expected: pass.
+Expected: pass. **Done 4 Sep 2026: `Test Files 7 passed (7), Tests 70 passed (70)`.**
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint
 ```
+
+**Done 4 Sep 2026: typecheck green (types generated, tsc --noEmit clean), lint clean. Exit 0.**
 
 ---
 
@@ -2099,7 +2249,7 @@ Stripe Dashboard → Developers → Webhooks → Add endpoint:
   `.canceled`, `.requires_action`, `charge.dispute.created`.
 - Copy the `whsec_...` shown after creation.
 
-**This is production's secret**, distinct from `.env.local`'s. Do not
+**This is production's secret**, distinct from `.env`'s. Do not
 paste into a chat.
 
 - [ ] **Step 2: Set Vercel env vars — Production + Preview**
@@ -2108,10 +2258,10 @@ Vercel dashboard → project → Settings → Environment Variables. For
 Production and Preview:
 
 - `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY` — same test-mode keys as
-  `.env.local` for the demo.
+  `.env` for the demo.
 - `STRIPE_WEBHOOK_SECRET` — from Step 1.
 - `CRON_SECRET` — freshly generated (`openssl rand -base64 32`),
-  distinct from `.env.local`.
+  distinct from `.env`.
 - Numeric config vars: `ASYNC_PAYMENT_TIMEOUT_MS`, `SEPA_HOLD_CAP_SHARE`,
   `SELLOUT_HIDE_THRESHOLD`, `SEPA_HARD_TIMEOUT_DAYS`,
   `PAY_CLICK_HOLD_EXTENSION_MS`, `WEBHOOK_MAX_ATTEMPTS`.
@@ -2282,7 +2432,7 @@ git commit -m "feat: Stripe payments — PI, webhook, fulfilment, reclaim-or-ref
 - [ ] `stripe@19.3.1`, `@stripe/stripe-js@5.7.0`,
       `@stripe/react-stripe-js@3.4.0` installed
 - [ ] Env schema extended (10 new keys); `.env.example`, `.env.test`,
-      `.env.local` coherent; `whsec_placeholder` refused at boot;
+      `.env` coherent; `whsec_placeholder` refused at boot;
       full test suite green after Task 2 (measurement of the extension)
 - [ ] Vercel env vars set for Production and Preview; production
       webhook registered in Stripe dashboard; `NEXT_PUBLIC_SITE_URL`

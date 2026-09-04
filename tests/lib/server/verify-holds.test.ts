@@ -20,6 +20,15 @@ function runVerify(args: string[] = []): { stdout: string; status: number } {
   }
 }
 
+// Same defect as tests/scripts/reset-admin-password.test.ts, which documented
+// it and fixed only itself: every `runVerify` spawns `pnpm exec tsx`, measured
+// at ~2.6s before the script begins. Vitest's default testTimeout is 5s and
+// vitest.config.mts raises only hookTimeout, so the `--fix` test — the one
+// that spawns twice — sat ~0.2s under the limit and failed the first time the
+// machine ran slow. It passes in isolation and fails in the full suite, which
+// is what a marginal timeout looks like, not a logic bug.
+const SPAWN_TIMEOUT = 30_000
+
 let ticketTypeId: string
 
 beforeEach(async () => {
@@ -60,7 +69,7 @@ describe('holds:verify', () => {
 
     expect(stdout).toContain('no drift')
     expect(status).toBe(0)
-  })
+  }, SPAWN_TIMEOUT)
 
   it('detects an inflated heldCount and exits 1', async () => {
     // Drift of exactly the kind nothing else would ever notice: capacity
@@ -72,7 +81,7 @@ describe('holds:verify', () => {
     expect(stdout).toContain('verify-drift')
     expect(stdout).toContain('drift=+3')
     expect(status).toBe(1)
-  })
+  }, SPAWN_TIMEOUT)
 
   it('corrects drift with --fix and records why', async () => {
     await db.ticketType.update({ where: { id: ticketTypeId }, data: { heldCount: 3 } })
@@ -87,5 +96,5 @@ describe('holds:verify', () => {
     expect(audit.meta).toMatchObject({ before: 3, after: 0, drift: 3 })
 
     expect(runVerify().status).toBe(0)
-  })
+  }, SPAWN_TIMEOUT)
 })
