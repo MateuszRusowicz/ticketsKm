@@ -11,85 +11,101 @@ We're building the ticket-sales app for the Krzyżowa Music festival in
 
 CLAUDE.md is loaded automatically and holds the operating rules and the trap
 list — read it. Then, in order:
-  plan/STATUS.md              — what's done, what's next, loose ends
+  plan/STATUS.md              — what's done, what's next, what's blocked on me
   plan/00-decisions.md        — settled decisions + the "Versions as built" table
-  plan/steps/03-public-programme.md — the last completed plan, and its Findings log
+  plan/steps/05-payments.md   — the plan to execute, and its Findings log
 
-Plans 01 (foundations), 02 (deployment, tasks 1-6) and 03 (public programme)
-are complete. 185 tests across 24 files, green twice from a clean tree. The
-storefront works end to end: programme -> concert -> buy box -> validated order
-form, in PL/EN/DE and PLN/EUR. No order is created and Stripe is not connected —
-those are Plans 04 and 05.
+Plans 01 (foundations), 02 (deployment, tasks 1-6), 03 (public programme) and
+04 (inventory) are complete and merged into `development`. 290 tests across 34
+files, green twice from a clean tree. A 900-seat concert provably cannot be
+oversold — 1000 concurrent buyers gives exactly 900 held, 100 rejected, with a
+recorded negative control proving the test can fail.
+
+Plan 05 (payments) is WRITTEN AND VERIFIED but NOT STARTED. It took three
+drafts and two critique rounds; read its Findings log before touching it,
+especially the entries about what the earlier drafts got wrong. Do not "improve"
+the design without reading why it is shaped this way — in particular, Plan 05
+deliberately does NOT cancel PaymentIntents on expiry, which overrides
+03-purchase-flow.md.
+
+Start with: read plan/STATUS.md and tell me what Task 0 needs from me.
 
 How I want you to work:
 
 - Verify against the codebase, not the plan. Open the files a step touches
-  before writing or executing it. Two critique passes on Plan 03 found five
-  blockers that were visible in the repo and invisible in the design docs.
+  before writing or executing it. Every critique pass on this project has found
+  blockers that were plainly visible in the repo and invisible in the docs.
 - Follow the plan step by step. Each step has a command and an expected result
   — run it and show me the output. Don't batch steps and report at the end.
-- Update the plan at the moment of discovery, not at the end. Every executable
-  plan has a Findings log; append to it and correct the affected step in the
-  same turn. Anything that outlives one plan goes in CLAUDE.md's trap list.
+- Update the plan at the moment of discovery, not at the end. Append to the
+  Findings log and correct the affected step in the same turn. Plan 04
+  accumulated ~45 findings during execution and two of them would otherwise
+  have stopped it dead.
+- A green test is not evidence until you have seen it fail. Plan 04 had three
+  tests that passed for the wrong reason — a pool-tuning test that passed with
+  the tuning removed, an audit test whose mock ignored its arguments, and a
+  seed test that could not reach the state it claimed to check. Run the
+  negative control.
 - Verify from a CLEAN tree before claiming anything passes:
       rm -rf .next next-env.d.ts tsconfig.tsbuildinfo
       pnpm typecheck && pnpm lint && pnpm test && pnpm build
   Run the suite twice when a change adds tests asserting exact row counts.
 - Never run git commit. Stop at each boundary, say what changed, give me the
-  command.
-- Secrets never enter a transcript. Redirect script output to a git-ignored
-  file inside the repo, never /tmp or a scratchpad — that has already destroyed
-  a set of production passwords.
-
-Start with: read plan/STATUS.md and tell me what the next task is and what it
-needs from me.
+  command. Keep commit messages short.
+- Secrets never enter a transcript. Not keys, not connection strings. Redirect
+  script output to a git-ignored file inside the repo, never /tmp — that has
+  already destroyed a set of production passwords.
 ```
 
 ---
 
 ## What a fresh session should know that isn't in the prompt
 
-**State at handoff (30 Aug 2026):** branch `feat/plan-03-public-programme`,
-Plan 03 complete and accepted by the owner after a manual pass. 185 tests.
-`main` is production and is what Vercel deploys; `development` integrates
-finished features.
+**State at handoff (4 Sep 2026):** branch `development`, clean tree, everything
+merged. Vercel builds `development` and deploys green.
 
-**The branch is not merged yet.** Merging it into `development` is the first
-housekeeping step:
+**Plan 05 is the whole job.** It is written, critiqued twice, independently
+verified, and blocked only on the owner. Its Findings log has 103 entries; the
+ones that explain the design are the 4 Sep rows.
 
-```bash
-git checkout development
-git merge feat/plan-03-public-programme
-git push origin development
-```
+**Four things are blocked on the owner** — see STATUS.md's table for detail:
+Stripe key *names* (`.env` has `STRIPE_API_KEY`, the plan wants
+`STRIPE_PUBLISHABLE_KEY`), the webhook secret (which cannot exist until
+`stripe listen` runs), Vercel Pro (without it the sweeps never run at all), and
+`NEXT_PUBLIC_SITE_URL` on Vercel (wrong value silently breaks four of six demo
+flows, in production only).
 
-**Plan 04 (inventory) is next and is unblocked.** It is the risky core:
-transactional capacity holds, the `heldCount` lifecycle, order creation, and
-concurrency tests proving a 900-seat venue cannot oversell. Write it with the
-`writing-plans` skill in the format of `steps/03-public-programme.md`, then
-**have subagents critique it before executing** — that pass found five blockers
-in Plan 03 and three in Plan 01, each of which would have surfaced far later
-and more expensively.
+**Tasks 0–4 can run today** without any of that.
 
-Two constraints Plan 04 inherits, both settled and both load-bearing:
+**Three design decisions that will look wrong without their reasoning:**
 
-- **Holds last 30 minutes, flat across venues** (30 Aug 2026). Safe only if
-  holds are released on payment failure, abandonment and cancellation — not
-  merely on expiry. The 5-minute sweep is the backstop, not the mechanism.
-- **One concert per order, one name per ticket.** The checkout schema in
-  `src/lib/shared/checkout.ts` already has the exact field names of the `Order`
-  columns, so Plan 04 needs no mapping layer. There is a `// PLAN-04:` marker
-  in `src/components/CheckoutForm.tsx` where `createOrder()` goes.
+1. **Plan 05 never cancels PaymentIntents.** This contradicts
+   `03-purchase-flow.md` on purpose. An abandoned checkout charges nobody, and
+   the two-transaction machinery built to cancel safely produced four blockers
+   of its own. The trade: a live PaymentIntent can succeed after its seats are
+   released, so **reclaim-or-refund is the primary safety net** and deserves
+   the most testing.
+2. **SEPA is enabled with seats held**, against advice, with three guardrails
+   (10% capacity cap, hidden near sellout, 5-day ceiling). Removing a guardrail
+   without replacing it re-opens a venue-scale capacity leak.
+3. **Alerting is a stopgap**, not a system: `console.error` on stderr, read by
+   a human looking at Vercel logs. Documented as such. Plan 07's dashboard
+   replaces it.
 
-**What is deliberately not built**, so it is not mistaken for a bug: orders,
-holds, Stripe, email, PDF tickets, the door scanner, promo codes, refunds, and
-real legal text. `plan/03-manual-test.md` lists them with the plan that owns
-each.
+**What is deliberately not built**, so it is not mistaken for a bug: payments,
+ticket email, PDF tickets, QR codes, the door scanner, promo codes, refunds,
+invitations, and real legal text. `plan/03-manual-test.md` lists them with the
+plan that owns each.
 
-**Two loose ends the owner has been reminded of:**
+**Two loose ends the owner has been reminded of repeatedly:**
 
-1. `.env.admin-credentials.txt` still sits in the repo root with both production
-   passwords in plaintext. Git-ignored, but it should be in the password
-   manager and deleted.
+1. `.env.admin-credentials.txt` still sits in the repo root with both
+   production admin passwords in plaintext. Git-ignored, but it belongs in a
+   password manager and then deleted.
 2. The Neon database password was once pasted into a chat transcript and should
-   be rotated (Neon → Roles → Reset password, then update the Vercel variables).
+   be rotated (Neon → Roles → Reset password, then update Vercel).
+
+**Housekeeping:** `feat/plan-01-foundations` is fully merged and still on the
+remote — `git push origin --delete feat/plan-01-foundations`. `main` is 10
+commits behind `development` and is no longer what Vercel deploys; decide
+whether it still means anything or should simply track `development`.

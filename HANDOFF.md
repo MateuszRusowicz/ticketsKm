@@ -185,6 +185,18 @@ recorded there.
 
 ## Operating it
 
+### Which branch Vercel deploys
+
+**`development`**, changed 4 Sep 2026. It had been building
+`feat/plan-03-public-programme` and failing for days: `vercel-build` runs
+`prisma migrate deploy` before `next build`, so a commit predating Plan 04's
+migration can never deploy against a database that already has it. Retrying
+such a deployment re-runs the same stale commit and fails identically every
+time — redeploy from a current branch instead.
+
+`main` is now 10 commits behind and is no longer what Vercel serves. Decide
+whether it still has a role.
+
 ### Rolling back a bad deploy
 
 Vercel → Deployments → pick the last good one → **Promote to Production**.
@@ -267,31 +279,39 @@ there is an announced on-sale moment, and logo files in a vector format.
 
 ## What happens next
 
-**The milestone is a test-mode demo (decided 2 Sep 2026).** A product that
-takes dummy payments and creates real orders for Polish and German buyers, in
-Stripe test mode, on `tickets-km.vercel.app`. The domain and the link from the
-existing Wix site follow only once that demo is accepted.
+**The milestone is a Stripe test-mode demo** (decided 2 Sep 2026): a product
+that takes dummy payments and creates real orders for Polish and German buyers,
+on `tickets-km.vercel.app`. The domain and the link from the Wix site follow
+only once that demo is accepted.
 
-1. **Merge `feat/plan-03-public-programme` into `development`.** Plan 03 is
-   complete and accepted; the branch is the only thing holding it.
-2. **Plan 04 — inventory.** The risky core: transactional capacity holds, the
-   `heldCount` lifecycle, order creation, and concurrency tests proving a
-   900-seat venue cannot oversell. Unblocked as of 30 Aug.
-3. **Plan 05 — payments, the checkout half only.** Stripe Payment Element in
-   test mode with BLIK, Przelewy24, Klarna, SEPA and cards, plus the webhook
-   that confirms an order. **Unblocked as of 2 Sep** by using a fresh test-mode
-   account with country PL; keys are environment variables, so the real account
-   swaps in at launch with no code change.
-4. **Demo, then decide.** Email, PDF tickets, QR codes and the scanner are the
+1. ~~Merge Plan 03~~ — done. ~~Plan 04 — inventory~~ — **done 3 Sep 2026**, the
+   risky core. A 900-seat concert provably cannot be oversold: 1000 concurrent
+   buyers, 900 held, 100 rejected, with a recorded negative control showing the
+   test reports 1000/1000 when the protection is removed.
+2. **Plan 05 — payments, checkout half.** Written, critiqued twice, verified,
+   **not started**. Blocked on four owner items (below).
+3. **Demo, then decide.** Email, PDF tickets, QR codes and the scanner are the
    other half of Plan 05 and Plan 07 — deliberately after the demo.
-5. Plan 02's tasks 7–9 (domain, backups, database cutover) all land at launch,
-   as does the Wix link-through.
+4. Plan 02's tasks 7–9 (domain, backups, database cutover) land at launch, as
+   does the Wix link-through.
+
+### Blocking Plan 05 — all four are yours
+
+| | What | Why it matters |
+|---|---|---|
+| 1 | **Rename the Stripe keys.** `.env` has `STRIPE_API_KEY` + `STRIPE_SECRET_KEY`; the plan expects `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`. Confirm they are test keys (`pk_test_` / `sk_test_`). | `.env` is git-ignored and has never been committed — verified 4 Sep 2026. Keep it that way. |
+| 2 | **Create the webhook secret.** It does not exist yet and cannot: `stripe listen` produces one for local work, and registering the endpoint in the Stripe dashboard produces a **different** one for production. | Without it the app refuses to boot — the env schema rejects both empty and placeholder values. |
+| 3 | **Upgrade Vercel to Pro.** | On Hobby, cron granularity is once daily, so **both hold-sweeps silently never run** and abandoned seats are never released. Hobby also forbids commercial use. |
+| 4 | **Set `NEXT_PUBLIC_SITE_URL` on Vercel** to `https://tickets-km.vercel.app`. | The payment `return_url` is built from it. If it still reads `localhost:3000`, every BLIK / Przelewy24 / Klarna buyer is redirected to their own machine — four of the six demo flows, failing only in production. |
 
 Every plan is written just before it is executed, so it describes the code that
-actually exists rather than the code imagined eight weeks earlier. **Have each
-one critiqued by subagents before executing it** — that pass found three
-blockers in Plan 01 and five in Plan 03, all visible in the repository and none
-visible in the design documents.
+actually exists. **Have each one critiqued by subagents before executing it** —
+that pass found three blockers in Plan 01, five in Plan 03, nine in Plan 04, and
+nine in Plan 05's first draft. On Plan 05 it went further: a second pass found
+the *revision* still not executable, which is what prompted the design
+simplification now recorded in `plan/00-decisions.md`.
+
+---
 
 ---
 

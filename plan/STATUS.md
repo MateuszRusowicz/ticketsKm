@@ -1,4 +1,4 @@
-# Status — 3 September 2026
+# Status — 4 September 2026
 
 Where the project stands, for whoever picks it up next. Update this at the end
 of a working session; it is the fastest way back into context.
@@ -96,39 +96,100 @@ Demo scope is now **the payment half of Plan 05** — Plan 04 landed 3 Sep 2026:
 **Deliberately outside the demo:** ticket email, PDF, QR codes, the door
 scanner, promo codes and refunds. They stay in Plans 05–07.
 
-**Next up: Plan 05 (payments), checkout half only.**
+**Next up: EXECUTE Plan 05 (payments), checkout half only.**
+[`steps/05-payments.md`](steps/05-payments.md) — **written, critiqued twice,
+verified, and ready.** 17 tasks (0–16), 2391 lines, 103 findings entries.
 
-Write it the way Plan 04 was written — draft, then have subagents critique it
-before executing. That pass found nine blockers in Plan 04, including a test
-harness that could not distinguish a protected system from an unprotected one,
-and a hook ordering that would have cancelled a live buyer's payment.
+It took three drafts. That history matters, because it explains the shape:
 
-What Plan 04 leaves ready for it, deliberately:
+- **Draft 1** (13 tasks) — three independent critique agents found **nine
+  blockers**, six of them convergent. Two ran code: the test suite would have
+  died at Task 2, and the plan did not deploy anything, so it could not have
+  produced the demo it was written for.
+- **Draft 2** (18 tasks) — a verification pass found the revision **still not
+  executable**. Of seven claimed fixes only one was fully closed, and the
+  largest redesign — a two-transaction "cancel the PaymentIntent, then release
+  the seats" primitive — introduced **four new blockers of its own**, one of
+  which violated the exact invariant it existed to guarantee.
+- **Draft 3** (17 tasks) — after an owner decision to **simplify** (below), the
+  machinery generating those bugs was deleted outright.
 
-- `expireOrder(orderId, { beforeRelease })` — Plan 05 passes the Stripe
-  PaymentIntent cancellation here. It runs **after** the transition is claimed
-  and **before** the seats are released, inside the same transaction, so a
-  failed cancellation rolls the whole expiry back.
-- `reclaimCapacityForOrder(orderId, tx)` — the `EXPIRED → PENDING → PAID`
-  late-success path for asynchronous methods. It can fail with
-  `InsufficientCapacityError`, which is exactly when Plan 05 must refund
-  instead of fulfilling.
-- `failOrder(orderId, reason)` — no caller yet; wire it to
-  `payment_intent.payment_failed` and `.canceled`.
-- The sweep's `stripePaymentIntentId IS NULL` clause, already in place.
-- `Order.stripePaymentIntentId` exists and is unique; `StripeWebhookEvent`
-  exists for idempotency.
+**Verified by hand on the final draft**, because two earlier self-audits
+claimed to be clean and were not:
 
-Plan 05 also owns the sweep's schedule: Plan 04 ships `pnpm holds:sweep` and
-the callable function, but **nothing runs it automatically yet** — say so in
-the demo runbook.
+| Check | Result |
+|---|---|
+| Every Stripe call and `PaymentIntent` field, compiled against `stripe@19.3.1` under `--strict` | **exit 0** |
+| Cross-references across 17 tasks | clean — the one `Task 17` hit is the plan's own audit grep |
+| Deleted machinery (`expiringLockedAt`, `cancelPaymentIntentThenRelease`) | only in the findings entry recording removal and the DoD forbidding it |
+| The six proposed migration columns | genuinely new against the live schema |
 
-**Plan 04 is unblocked.** Hold duration settled 30 Aug 2026: **30 minutes,
-flat across all venues.** The accompanying requirement is that Plan 04 releases
+### Three owner decisions settled 4 Sep 2026
+
+**1. No PaymentIntent cancellation on expiry.** When a hold lapses, release the
+seats and do not call Stripe. An abandoned card checkout charges nobody — the
+buyer never confirmed — so cancelling is hygiene, not safety. This **overrides**
+[`03-purchase-flow.md`](03-purchase-flow.md)'s cancel-then-release mandate,
+which called the reverse "the nastiest bug in the system"; that guidance is
+deliberately superseded and the doc is corrected in Plan 05 Task 4.
+
+> **The consequence, which is now load-bearing:** a live PaymentIntent can still
+> succeed after its seats are released. The **reclaim-or-refund path is
+> therefore the primary safety net, not an edge case.** If anything in Plan 05
+> deserves paranoid testing, it is that path.
+
+**2. SEPA Direct Debit is enabled, and seats are held for it** — chosen against
+a recommendation, with the arithmetic understood. SEPA is the one method that
+genuinely sits in Stripe's `processing` state for days. Three guardrails make it
+survivable, all env-tunable:
+
+- concurrent SEPA holds capped at **10% of a concert's capacity**
+- SEPA hidden once a concert is within **20% of selling out**
+- a hard **5-day** ceiling on any SEPA hold
+
+Without these the arithmetic is stark: at 25% payment-step abandonment on a
+900-seat concert, a 6.5-hour hold strands ~975 seats — **more than the venue** —
+so the concert reads sold out while seats remain unsold.
+
+**3. Auto-refund on a capacity-lost late success ships, with an operational
+alert.** A buyer whose payment cleared after the concert sold out is refunded
+automatically, and a human is told so they can make contact. The buyer *email*
+is Plan 06; shipping a silent debit-then-credit for a one-shot event was
+rejected. The alert is `console.error('RECONCILE alerts=…')` on **stderr**
+(Vercel captures stderr, not response bodies) and is documented as a **stopgap
+until Plan 07's admin dashboard** — not a real alerting system.
+
+### Blocked on the owner before Task 5
+
+| # | What | Notes |
+|---|---|---|
+| 1 | **Stripe key names do not match.** `.env` has `STRIPE_API_KEY` + `STRIPE_SECRET_KEY`; Plan 05 expects `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`. Rename, and confirm the publishable key starts `pk_test_` and the secret `sk_test_`. | `.env` is git-ignored and has never been committed — verified 4 Sep. |
+| 2 | **`STRIPE_WEBHOOK_SECRET` does not exist yet and cannot.** It is produced by `stripe listen` locally, and separately by registering the endpoint in the Stripe dashboard for production. **They are two different values.** | Plan 05 Task 1 and Task 15. |
+| 3 | **Vercel Pro.** On Hobby, cron is once-daily at best, so **both sweeps silently never run** and abandoned holds are never released. | Already an open item in `HANDOFF.md`; now a hard prerequisite. |
+| 4 | **`NEXT_PUBLIC_SITE_URL` on Vercel** must be `https://tickets-km.vercel.app`. Locally it is `http://localhost:3000`. | Plan 05 builds the payment `return_url` from it — a wrong value **breaks four of the six demo flows**, and only in production. |
+
+Tasks 0–4 (baseline, design-doc corrections, the migration) can run before any
+of this. Everything from Task 5 needs the keys.
+
+### Deployment fixed 4 Sep 2026
+
+Vercel had been failing for days. Cause: it was building **commit `c926ef2` on
+`feat/plan-03-public-programme`** — 13 commits stale — and `vercel-build` runs
+`prisma migrate deploy` *before* `next build`, so a commit predating Plan 04's
+migration could never deploy against a database that already had it. Retrying
+re-ran the same dead commit, which is why it never recovered.
+
+Fixed by pointing Vercel's build branch at **`development`**. `feat/plan-03-public-programme`
+is merged and deleted. `feat/plan-01-foundations` is still on the remote and can
+go the same way.
+
+**Historical context — Plan 04's hold rules.** Hold duration settled 30 Aug
+2026: **30 minutes, flat across all venues.** The accompanying requirement is that Plan 04 releases
 holds on payment failure, abandonment and cancellation — not only on expiry.
 The 5-minute sweep is the backstop, not the mechanism.
 
-**Plan 05 is now unblocked too, for the demo only.** Test mode needs no
+**Test mode needs no verified Polish entity**, so the demo runs on a test-mode
+account and the real one swaps in at launch with no code change. Test mode needs no
 verified Polish entity, so a fresh test-mode Stripe account with country PL is
 created now and its keys go in as environment variables — the real account swaps
 in at launch with no code change. Two caveats that survive this:
