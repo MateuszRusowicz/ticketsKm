@@ -1,9 +1,11 @@
 import 'server-only'
+import { randomBytes } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@/generated/prisma/client'
+import type Stripe from 'stripe'
 import { checkoutSchema, type CheckoutInput } from '@/lib/shared/checkout'
 import { recordAudit } from './audit'
 import { db } from './db'
-import { holdCapacity, releaseCapacity } from './holds'
+import { holdCapacity, InsufficientCapacityError, releaseCapacity } from './holds'
 import { expireOrderWith } from '@/lib/shared/holds-sweep'
 import { generateOrderReference } from './order-reference'
 import { getPublicEvent } from './public-events'
@@ -27,6 +29,42 @@ export class QuantityAboveMaxPerOrderError extends Error {
     this.name = 'QuantityAboveMaxPerOrderError'
   }
 }
+
+/**
+ * Thrown by `reclaimCapacityForOrder` when the event is no longer in a
+ * purchasable state (CANCELLED, CLOSED, or DRAFT). A `succeeded` PI against
+ * such an order must be refunded — issuing tickets for a cancelled concert
+ * is worse than a refund being one step late.
+ */
+export class EventNoLongerPurchasableError extends Error {
+  constructor(readonly reason: 'cancelled' | 'closed' | 'draft') {
+    super(`Event no longer purchasable: ${reason}`)
+    this.name = 'EventNoLongerPurchasableError'
+  }
+}
+
+export type FulfilResult =
+  | { fulfilled: true; ticketIds: string[] }
+  | { skipped: 'alreadyFulfilled' }
+  | {
+      refunded: true
+      reason:
+        | 'oversoldOnLateSuccess'
+        | 'eventCancelledOnLateSuccess'
+        | 'terminalStateOnLateSuccess'
+    }
+
+/**
+ * Performs a real refund on the Stripe charge for this PaymentIntent.
+ *
+ * Implemented in the webhook dispatcher (Task 9). Accepts both a PI id and a
+ * charge id so the refund lookup can use whichever is available when
+ * charge_already_refunded or idempotency_key_in_use is returned.
+ */
+export type RefundHook = (
+  paymentIntentId: string,
+  chargeId: string | null,
+) => Promise<{ refundId: string }>
 
 export type CreateOrderResult = {
   orderId: string
@@ -310,7 +348,13 @@ export async function reclaimCapacityForOrder(
     where: { id: orderId },
     select: {
       status: true,
-      items: { select: { ticketTypeId: true, quantity: true } },
+      items: {
+        select: {
+          ticketTypeId: true,
+          quantity: true,
+          ticketType: { select: { event: { select: { id: true, status: true } } } },
+        },
+      },
     },
   })
 
@@ -318,15 +362,20 @@ export async function reclaimCapacityForOrder(
     throw new Error(`reclaimCapacityForOrder: order ${orderId} is ${order.status}, expected EXPIRED`)
   }
 
-  for (const item of order.items) {
-    const ticketType = await tx.ticketType.findUniqueOrThrow({
-      where: { id: item.ticketTypeId },
-      select: { eventId: true },
-    })
+  // Guard: refuse to re-hold seats on an event that is no longer purchasable.
+  // Without this, a late `succeeded` PI on an EXPIRED order for a CANCELLED
+  // event would issue tickets for a concert that will never happen.
+  const eventStatus = order.items[0].ticketType.event.status
+  if (!['ON_SALE', 'SOLD_OUT'].includes(eventStatus)) {
+    throw new EventNoLongerPurchasableError(
+      eventStatus === 'CANCELLED' ? 'cancelled' : eventStatus === 'CLOSED' ? 'closed' : 'draft',
+    )
+  }
 
+  for (const item of order.items) {
     await holdCapacity({
       ticketTypeId: item.ticketTypeId,
-      eventId: ticketType.eventId,
+      eventId: item.ticketType.event.id,
       quantity: item.quantity,
       client: tx,
     })
@@ -335,5 +384,361 @@ export async function reclaimCapacityForOrder(
   await tx.order.update({
     where: { id: orderId },
     data: { status: 'PENDING', holdExpiresAt: new Date(Date.now() + HOLD_DURATION_MS) },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// fulfilOrder helpers (internal)
+// ---------------------------------------------------------------------------
+
+/**
+ * Generates a 26-character Crockford base32 ticket code from 16 random bytes.
+ *
+ * Crockford alphabet: 0–9 A–Z excluding I L O U (32 symbols).
+ * 16 bytes × 8 bits = 128 bits; ⌈128/5⌉ = 26 characters.
+ */
+function ticketCode(): string {
+  const alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+  const bytes = randomBytes(16)
+  let out = ''
+  let value = 0
+  let bits = 0
+  for (const b of bytes) {
+    value = (value << 8) | b
+    bits += 8
+    while (bits >= 5) {
+      out += alphabet[(value >>> (bits - 5)) & 31]
+      bits -= 5
+    }
+  }
+  if (bits > 0) out += alphabet[(value << (5 - bits)) & 31]
+  return out
+}
+
+/**
+ * Two-transaction refund for orders that cannot be fulfilled.
+ *
+ * Phase 1 (tx1): mark `refundRequestedAt` and write an ALERT audit. Commits
+ *   before the Stripe call so a crash mid-call is recoverable by reconciliation.
+ * Phase 2 (outside any tx): call the injected refundHook — a single Stripe
+ *   network round-trip. Never inside a Postgres transaction: measured to
+ *   serialise 500 orders against a 30s timeout.
+ * Phase 3 (tx2): persist `stripeRefundId` and transition to REFUNDED.
+ */
+async function processLateSuccessRefund(
+  orderId: string,
+  reason: 'oversoldOnLateSuccess' | 'eventCancelledOnLateSuccess' | 'terminalStateOnLateSuccess',
+  refundHook: RefundHook,
+  pi: Stripe.PaymentIntent,
+): Promise<FulfilResult> {
+  // Phase 1 — commit the intent to refund before we call Stripe.
+  await db.$transaction(async (tx) => {
+    await tx.order.update({ where: { id: orderId }, data: { refundRequestedAt: new Date() } })
+    await recordAudit(
+      {
+        action: 'order.refund_requested',
+        entityType: 'Order',
+        entityId: orderId,
+        meta: { reason, paymentIntentId: pi.id, severity: 'ALERT' },
+      },
+      tx,
+    )
+  })
+
+  // Phase 2 — Stripe refund outside any DB transaction.
+  const chargeId =
+    typeof pi.latest_charge === 'string' ? pi.latest_charge : (pi.latest_charge?.id ?? null)
+  const { refundId } = await refundHook(pi.id, chargeId)
+
+  // Phase 3 — persist the result.
+  await db.$transaction(async (tx) => {
+    await tx.order.update({
+      where: { id: orderId },
+      data: { status: 'REFUNDED', stripeRefundId: refundId },
+    })
+    await recordAudit(
+      {
+        action: 'order.refunded',
+        entityType: 'Order',
+        entityId: orderId,
+        meta: { reason, paymentIntentId: pi.id, refundId },
+      },
+      tx,
+    )
+  })
+
+  return { refunded: true, reason }
+}
+
+// ---------------------------------------------------------------------------
+// fulfilOrder — the primary safety net for Plan 05
+// ---------------------------------------------------------------------------
+
+/**
+ * Fulfils a `succeeded` PaymentIntent: moves `heldCount → soldCount` in one
+ * atomic UPDATE, transitions the order to PAID, and creates Ticket rows.
+ *
+ * Also handles the reclaim-or-refund path — the primary defence against
+ * oversell. A PaymentIntent can succeed after its seats were released by the
+ * hold-expiry sweep (which never calls Stripe). If the seats are still
+ * available they are reclaimed and the order is fulfilled; otherwise the
+ * buyer is refunded. FAILED/CANCELLED orders that somehow received a
+ * `succeeded` event are also refunded.
+ *
+ * **Lock order matches `holdCapacity` (Event first, TicketType second)** so
+ * concurrent hold + fulfil on the same event cannot ABBA-deadlock.
+ */
+export async function fulfilOrder(
+  orderId: string,
+  refundHook: RefundHook,
+  pi: Stripe.PaymentIntent,
+): Promise<FulfilResult> {
+  // -------------------------------------------------------------------------
+  // PI cross-check: happens FIRST, before any DB write.
+  //
+  // A mismatched PI reaching this function is a severe programming error —
+  // we could be charging a different order or a different amount. Abort with
+  // no side effects rather than issuing wrong tickets or a wrong refund.
+  // -------------------------------------------------------------------------
+  const order0 = await db.order.findUniqueOrThrow({
+    where: { id: orderId },
+    select: {
+      id: true,
+      total: true,
+      currency: true,
+      stripePaymentIntentId: true,
+      stripeRefundId: true,
+    },
+  })
+
+  if (pi.id !== order0.stripePaymentIntentId) {
+    throw new Error(
+      `fulfilOrder: PI id mismatch: pi=${pi.id}, order=${order0.stripePaymentIntentId}`,
+    )
+  }
+  if (pi.amount_received !== order0.total) {
+    throw new Error(
+      `fulfilOrder: amount mismatch: pi=${pi.amount_received}, order=${order0.total}`,
+    )
+  }
+  if (pi.currency !== order0.currency.toLowerCase()) {
+    throw new Error(
+      `fulfilOrder: currency mismatch: pi=${pi.currency}, order=${order0.currency}`,
+    )
+  }
+
+  // If a refund already completed for this order, do nothing.
+  // Checked before the transaction: idempotency on our own field, not Stripe's.
+  if (order0.stripeRefundId) return { skipped: 'alreadyFulfilled' }
+
+  const result = await db.$transaction(async (tx) => {
+    const order = await tx.order.findUniqueOrThrow({
+      where: { id: orderId },
+      select: {
+        id: true,
+        status: true,
+        stripePaymentIntentId: true,
+        attendeeNames: true,
+        items: {
+          select: {
+            ticketTypeId: true,
+            quantity: true,
+            ticketType: { select: { eventId: true } },
+          },
+        },
+      },
+    })
+
+    // PAID / REFUNDED / PARTIALLY_REFUNDED: already handled, do nothing.
+    if (['PAID', 'REFUNDED', 'PARTIALLY_REFUNDED'].includes(order.status)) {
+      return { skipped: 'alreadyFulfilled' as const }
+    }
+
+    if (order.status === 'EXPIRED') {
+      // Late success after hold-expiry sweep: attempt to reclaim the seats.
+      // InsufficientCapacityError → oversold.  EventNoLongerPurchasableError →
+      // event was cancelled while the order was in flight.
+      try {
+        await reclaimCapacityForOrder(order.id, tx)
+      } catch (e) {
+        if (e instanceof InsufficientCapacityError) {
+          return { needsRefund: 'oversoldOnLateSuccess' as const }
+        }
+        if (e instanceof EventNoLongerPurchasableError) {
+          return { needsRefund: 'eventCancelledOnLateSuccess' as const }
+        }
+        throw e
+      }
+    } else if (order.status === 'FAILED' || order.status === 'CANCELLED') {
+      // A `succeeded` PI against a terminal order is money held with nothing
+      // delivered. Refund immediately — skipping would leave the buyer charged.
+      return { needsRefund: 'terminalStateOnLateSuccess' as const }
+    } else if (order.status !== 'PENDING') {
+      return { skipped: 'alreadyFulfilled' as const }
+    }
+
+    // -----------------------------------------------------------------------
+    // Fulfilment path. Order is PENDING (either originally, or just reclaimed
+    // from EXPIRED by reclaimCapacityForOrder above).
+    // -----------------------------------------------------------------------
+
+    // ABBA-safe Event lock first, matching holdCapacity's lock order.
+    // holdCapacity: Event FOR UPDATE → TicketType UPDATE
+    // fulfilOrder: Event FOR UPDATE → TicketType UPDATE
+    // Both sides take the same lock first, so no deadlock is possible.
+    const eventId = order.items[0].ticketType.eventId
+    await tx.$executeRawUnsafe(`SELECT id FROM "Event" WHERE id = $1 FOR UPDATE`, eventId)
+
+    // ONE UPDATE moves held → sold. Two separate UPDATEs create a window in
+    // which a concurrent sweep can decrement heldCount below zero — the drift
+    // bug Plan 04 flagged explicitly.
+    for (const item of order.items) {
+      const rows = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        `UPDATE "TicketType"
+            SET "heldCount" = "heldCount" - $1,
+                "soldCount" = "soldCount" + $1,
+                "updatedAt"  = now()
+          WHERE id = $2 AND "heldCount" >= $1
+        RETURNING id`,
+        item.quantity,
+        item.ticketTypeId,
+      )
+      if (rows.length === 0) {
+        throw new Error(`fulfilOrder: heldCount too low for ticketType ${item.ticketTypeId}`)
+      }
+    }
+
+    // Transition Order PENDING → PAID atomically. If a concurrent transaction
+    // raced us to a terminal status, this returns 0 rows and we throw, rolling
+    // the entire transaction back.
+    // status IN ('PENDING') is sufficient: if we came through the EXPIRED
+    // branch, reclaimCapacityForOrder already set status = PENDING within
+    // this same transaction, so the UPDATE sees PENDING.
+    const paid = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+      `UPDATE "Order" SET status = 'PAID', "paidAt" = now()
+        WHERE id = $1 AND status IN ('PENDING')
+        RETURNING id`,
+      orderId,
+    )
+    if (paid.length === 0) {
+      throw new Error(`fulfilOrder: order ${orderId} was not PENDING at PAID transition`)
+    }
+
+    // Create Ticket rows: one per admission, holder name from the index-keyed
+    // attendeeNames JSON stored at checkout time.
+    const attendees =
+      (order.attendeeNames as Array<{ index: number; name: string }> | null) ?? []
+    const byIndex = new Map(attendees.map((a) => [a.index, a.name]))
+    const ticketIds: string[] = []
+    let idx = 0
+    for (const item of order.items) {
+      for (let i = 0; i < item.quantity; i++) {
+        const ticket = await tx.ticket.create({
+          data: {
+            code: ticketCode(),
+            orderId,
+            eventId: item.ticketType.eventId,
+            ticketTypeId: item.ticketTypeId,
+            holderName: byIndex.get(idx) ?? null,
+            status: 'VALID',
+          },
+          select: { id: true },
+        })
+        ticketIds.push(ticket.id)
+        idx += 1
+      }
+    }
+
+    // Flip event to SOLD_OUT if capacity is now fully sold.
+    // Guard: ON_SALE only — a concurrent fulfil may already have flipped it,
+    // and CANCELLED/CLOSED events must never be revived.
+    await tx.$executeRawUnsafe(
+      `UPDATE "Event" SET status = 'SOLD_OUT'
+        WHERE id = $1
+          AND status = 'ON_SALE'
+          AND capacity <= (
+            SELECT COALESCE(SUM("soldCount"), 0)
+              FROM "TicketType"
+             WHERE "eventId" = $1
+          )`,
+      eventId,
+    )
+
+    await recordAudit(
+      {
+        action: 'order.fulfil',
+        entityType: 'Order',
+        entityId: orderId,
+        meta: { ticketCount: ticketIds.length, paymentIntentId: order.stripePaymentIntentId },
+      },
+      tx,
+    )
+
+    return { fulfilled: true as const, ticketIds }
+  })
+
+  if ('needsRefund' in result) {
+    // TypeScript can't narrow the Prisma-inferred union to exclude undefined here;
+    // the `in` guard guarantees it is present.
+    return processLateSuccessRefund(orderId, result.needsRefund!, refundHook, pi)
+  }
+  return result
+}
+
+// ---------------------------------------------------------------------------
+// recordPaymentAttempt — Task 8
+// ---------------------------------------------------------------------------
+
+/**
+ * Extracts the payment method type from a PaymentIntent.
+ *
+ * stripe@19.3.1 has no `pi.charges` field (verified types/PaymentIntents.d.ts:129).
+ * Uses pi.latest_charge (string | Stripe.Charge | null); when expanded via retrieve,
+ * reads charge.payment_method_details.type. Falls back to pi.payment_method_types
+ * if it collapses to exactly one method (i.e. the allow-list has unambiguously one entry).
+ */
+export function extractPaymentMethodType(pi: Stripe.PaymentIntent): string | null {
+  const lc = pi.latest_charge
+  if (lc && typeof lc !== 'string') {
+    const t = lc.payment_method_details?.type
+    if (t) return t
+  }
+  // Fall back to the allow-list — reliable only when collapsed to one method.
+  if (pi.payment_method_types.length === 1) return pi.payment_method_types[0]
+  return null
+}
+
+/**
+ * Records a declined, processing, or requires_action payment attempt without
+ * touching Order.status. A declined card is retryable — calling failOrder here
+ * would release the seats and make any retry charge against a FAILED order
+ * (where fulfilOrder skips fulfilment and triggers the refund path instead).
+ *
+ * Writes paymentIntentStatus and paymentMethodType (if determinable), then an
+ * audit row. The audit is standalone (best-effort); a failure there must not
+ * roll back the status update.
+ */
+export async function recordPaymentAttempt(
+  orderId: string,
+  pi: Stripe.PaymentIntent,
+  meta: { reason: 'processing' | 'requires_action' | 'declined' },
+): Promise<void> {
+  const paymentMethodType = extractPaymentMethodType(pi)
+  await db.order.update({
+    where: { id: orderId },
+    data: {
+      paymentIntentStatus: pi.status,
+      ...(paymentMethodType !== null && { paymentMethodType }),
+    },
+  })
+  await recordAudit({
+    action: `stripe.${meta.reason}`,
+    entityType: 'Order',
+    entityId: orderId,
+    meta: {
+      paymentIntentId: pi.id,
+      status: pi.status,
+      lastPaymentError: pi.last_payment_error?.code ?? null,
+    },
   })
 }

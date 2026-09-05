@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type Stripe from 'stripe'
 import { db } from '@/lib/server/db'
 import { InsufficientCapacityError } from '@/lib/server/holds'
 import {
@@ -7,9 +8,12 @@ import {
   EventNotPurchasableError,
   expireOrder,
   failOrder,
+  fulfilOrder,
   HOLD_DURATION_MS,
   QuantityAboveMaxPerOrderError,
   reclaimCapacityForOrder,
+  recordPaymentAttempt,
+  type RefundHook,
 } from '@/lib/server/orders'
 import type { CheckoutInput } from '@/lib/shared/checkout'
 
@@ -455,5 +459,149 @@ describe('hold-release lifecycle', () => {
     await expect(
       db.$transaction((tx) => reclaimCapacityForOrder(order.orderId, tx)),
     ).rejects.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// recordPaymentAttempt + extractPaymentMethodType — Task 8
+// ---------------------------------------------------------------------------
+
+/** Minimal PI stub for recordPaymentAttempt/extractPaymentMethodType tests. */
+function makeRecordPi(overrides: {
+  id?: string
+  status?: string
+  payment_method_types?: string[]
+  latest_charge?: string | { id: string; payment_method_details: { type: string } } | null
+  last_payment_error?: { code?: string } | null
+} = {}): Stripe.PaymentIntent {
+  return {
+    id: overrides.id ?? 'pi_rpa_test',
+    status: overrides.status ?? 'requires_payment_method',
+    payment_method_types: overrides.payment_method_types ?? ['card'],
+    latest_charge: overrides.latest_charge ?? null,
+    last_payment_error: overrides.last_payment_error ?? null,
+  } as unknown as Stripe.PaymentIntent
+}
+
+describe('recordPaymentAttempt', () => {
+  // case 1 — payment_failed keeps order PENDING, writes paymentIntentStatus, audit, hold intact
+  it('case 1: payment_failed → PENDING unchanged, paymentIntentStatus written, hold intact, audit stripe.declined', async () => {
+    const { orderId } = await createOrder(input(ticketTypeId, { quantity: 2 }))
+    const pi = makeRecordPi({ id: 'pi_rpa1', status: 'requires_payment_method' })
+
+    await recordPaymentAttempt(orderId, pi, { reason: 'declined' })
+
+    const order = await db.order.findUniqueOrThrow({ where: { id: orderId } })
+    expect(order.status).toBe('PENDING')
+    expect(order.paymentIntentStatus).toBe('requires_payment_method')
+    expect(await heldCount(ticketTypeId)).toBe(2)
+
+    const audit = await db.auditLog.findFirst({
+      where: { entityId: orderId, action: 'stripe.declined' },
+    })
+    expect(audit).not.toBeNull()
+    expect((audit!.meta as Record<string, unknown>).paymentIntentId).toBe('pi_rpa1')
+  })
+
+  // case 2 — decline then successful fulfilOrder: order remains PENDING so fulfil works
+  it('case 2: declined then fulfilOrder succeeds (order stays PENDING)', async () => {
+    // Use a run-unique PI ID to avoid the stripePaymentIntentId unique constraint
+    // across consecutive test runs (orders.test.ts has no TRUNCATE in beforeEach).
+    const piId = `pi_rpa2_${crypto.randomUUID()}`
+    const { orderId } = await createOrder(input(ticketTypeId, { quantity: 2, email: `rpa2-${Date.now()}@example.test` }))
+    await db.order.update({ where: { id: orderId }, data: { stripePaymentIntentId: piId } })
+
+    await recordPaymentAttempt(orderId, makeRecordPi({ id: piId, status: 'requires_payment_method' }), { reason: 'declined' })
+
+    const after = await db.order.findUniqueOrThrow({ where: { id: orderId } })
+    expect(after.status).toBe('PENDING')
+
+    // Buyer retries; now the PI succeeds with amount_received = 10_000 (2 × 5000)
+    const successPi = {
+      id: piId,
+      amount_received: 10_000,
+      currency: 'pln',
+      latest_charge: null,
+    } as unknown as Stripe.PaymentIntent
+
+    const refundHook = vi.fn<RefundHook>(async () => ({ refundId: 're_rpa2_never' }))
+    const result = await fulfilOrder(orderId, refundHook, successPi)
+
+    expect(result).toMatchObject({ fulfilled: true })
+    expect(refundHook).not.toHaveBeenCalled()
+  })
+
+  // case 3 — processing writes paymentIntentStatus and extracts paymentMethodType
+  it('case 3: processing writes paymentIntentStatus=processing, paymentMethodType from charge', async () => {
+    const { orderId } = await createOrder(input(ticketTypeId))
+    const pi = makeRecordPi({
+      id: 'pi_rpa3',
+      status: 'processing',
+      payment_method_types: ['p24'],
+      latest_charge: { id: 'ch_rpa3', payment_method_details: { type: 'p24' } },
+    })
+
+    await recordPaymentAttempt(orderId, pi, { reason: 'processing' })
+
+    const order = await db.order.findUniqueOrThrow({ where: { id: orderId } })
+    expect(order.paymentIntentStatus).toBe('processing')
+    expect(order.paymentMethodType).toBe('p24')
+  })
+
+  // case 4 — requires_action: no method if allow-list has multiple options
+  it('case 4: requires_action → paymentIntentStatus written; paymentMethodType null (multi-method)', async () => {
+    const { orderId } = await createOrder(input(ticketTypeId))
+    const pi = makeRecordPi({
+      id: 'pi_rpa4',
+      status: 'requires_action',
+      payment_method_types: ['card', 'p24'],
+      latest_charge: null,
+    })
+
+    await recordPaymentAttempt(orderId, pi, { reason: 'requires_action' })
+
+    const order = await db.order.findUniqueOrThrow({ where: { id: orderId } })
+    expect(order.paymentIntentStatus).toBe('requires_action')
+    expect(order.paymentMethodType).toBeNull()
+  })
+
+  // case 5 — pi.latest_charge expanded object → type from charge.payment_method_details
+  it('case 5: pi.latest_charge expanded Charge object → paymentMethodType from charge', async () => {
+    const { orderId } = await createOrder(input(ticketTypeId))
+    const pi = makeRecordPi({
+      id: 'pi_rpa5',
+      status: 'processing',
+      payment_method_types: ['card', 'sepa_debit'],
+      latest_charge: { id: 'ch_rpa5', payment_method_details: { type: 'sepa_debit' } },
+    })
+
+    await recordPaymentAttempt(orderId, pi, { reason: 'processing' })
+
+    const order = await db.order.findUniqueOrThrow({ where: { id: orderId } })
+    expect(order.paymentMethodType).toBe('sepa_debit')
+  })
+
+  // case 6 — pi.latest_charge is a string (unexpanded) → fall through to payment_method_types[0]
+  it('case 6: pi.latest_charge is a string → fall through, payment_method_types length 1 → persist it', async () => {
+    const { orderId } = await createOrder(input(ticketTypeId))
+    const pi = makeRecordPi({
+      id: 'pi_rpa6',
+      status: 'requires_payment_method',
+      payment_method_types: ['blik'],
+      latest_charge: 'ch_rpa6_unexpanded',
+    })
+
+    await recordPaymentAttempt(orderId, pi, { reason: 'declined' })
+
+    const order = await db.order.findUniqueOrThrow({ where: { id: orderId } })
+    expect(order.paymentMethodType).toBe('blik')
+  })
+
+  // case 7 — compile-time assertion: pi.charges does not exist in stripe@19.3.1
+  it('case 7: pi.charges does not exist on stripe@19.3.1 Stripe.PaymentIntent (type assertion)', () => {
+    const pi = {} as Stripe.PaymentIntent
+    // @ts-expect-error pi.charges does not exist in stripe@19.3.1 (verified types/PaymentIntents.d.ts:129)
+    void pi.charges
+    expect(true).toBe(true)
   })
 })
