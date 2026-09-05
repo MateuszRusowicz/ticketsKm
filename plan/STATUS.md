@@ -99,8 +99,16 @@ scanner, promo codes and refunds. They stay in Plans 05–07.
 ### Plan 05 execution started 4 Sep 2026 — Tasks 0–14 done
 
 On branch **`feat/plan-05-payments`** (cut from `development`; Plan 04's branch
-is merged and deleted). **Nothing is committed** — the whole of the below sits
-in the working tree awaiting the owner.
+is merged and deleted). Committed by the owner in two batches — `0025785`
+(Tasks 0–4) and `0f5087d` (Tasks 5–10). **Tasks 11–14 are in the working tree,
+not yet committed.**
+
+**Verified 5 Sep 2026 the way CI verifies:** `km_test` reset to empty, then the
+suite run **once** — `45 files, 403/403, exit 0`. This matters because CI uses a
+fresh Postgres container every run, so a warm local database is not evidence
+that CI will pass. See the `sweep-holds` P2025 row in the plan's Findings log:
+that flakiness is **still unresolved**, not closed — the cold-database
+reproduction simply failed to trigger it.
 
 | Task | What | State |
 |---|---|---|
