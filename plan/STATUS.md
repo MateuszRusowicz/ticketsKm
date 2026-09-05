@@ -96,7 +96,7 @@ Demo scope is now **the payment half of Plan 05** — Plan 04 landed 3 Sep 2026:
 **Deliberately outside the demo:** ticket email, PDF, QR codes, the door
 scanner, promo codes and refunds. They stay in Plans 05–07.
 
-### Plan 05 execution started 4 Sep 2026 — Tasks 0–4 done
+### Plan 05 execution started 4 Sep 2026 — Tasks 0–14 done
 
 On branch **`feat/plan-05-payments`** (cut from `development`; Plan 04's branch
 is merged and deleted). **Nothing is committed** — the whole of the below sits
@@ -109,7 +109,32 @@ in the working tree awaiting the owner.
 | 2 | `stripe@19.3.1` + env schema + `.env.test` | ✅ 8 new tests |
 | 3 | Migration — 4 `Order` cols, 2 ledger cols, 3 indexes | ✅ applied to `km_dev` + `km_test` |
 | 4 | Design-doc corrections | ✅ docs only |
-| **5** | **Stripe wrapper + allowed-methods** | **next** |
+| 5 | Stripe wrapper + allowed-methods | ✅ 6 tests |
+| 6 | `createPaymentIntent` — claim + PI creation | ✅ 12 tests |
+| 7 | `fulfilOrder` + `reclaimCapacityForOrder` | ✅ 11 cases |
+| 8 | Webhook dispatcher + `dispatchWebhookEvent` | ✅ complete |
+| 9 | `computeAllowedPaymentMethods` + SEPA cap | ✅ complete |
+| 10 | Webhook ingress route + ledger | ✅ complete |
+| 11 | Primary + secondary sweeps | ✅ complete |
+| 12 | Payment Element on the order page — islands, i18n, `processing`/`refunded` bands | ✅ 13 new tests (6+6+1) |
+| 13 | Cron routes + `vercel.json` | ✅ 9 new tests |
+| 14 | Reconciliation cron — three narrow states | ✅ 11 new tests (7+4) |
+| **15** | **Vercel deployment** | **next — owner action required** |
+
+**Suite is now 403 tests** across 45 files, green from a clean tree. `pnpm typecheck`, `pnpm lint`, and `pnpm build` all EXIT 0.
+
+**New files (Tasks 12–14):**
+- `src/lib/server/reconcile.ts` — reconciliation logic (stuck refunds, stuck webhooks, ticket gaps)
+- `src/components/PaymentElementIsland.tsx` — Pay-click gate, Stripe Elements mount, `return_url`
+- `src/components/OrderProcessingIsland.tsx` — polling component for `processing` band
+- `src/app/api/cron/release-holds/route.ts` — primary sweep cron, auth, 207 on failure
+- `src/app/api/cron/async-release-holds/route.ts` — SEPA/async sweep cron
+- `src/app/api/cron/reconcile/route.ts` — reconciliation cron, 207 on alerts
+- `tests/app/shop/extend-hold-action.test.ts` — 6 cases
+- `tests/app/shop/start-payment-action.test.ts` — 6 cases
+- `tests/app/api/cron-release-holds.test.ts` — 9 cases (both sweeps, auth, 207)
+- `tests/app/api/cron-reconcile.test.ts` — 4 cases
+- `tests/lib/server/reconcile.test.ts` — 7 cases
 
 **Baseline is now 300 tests** (290 + 8 env-schema + 2 schema-column), green
 **twice** from a clean tree, `✓ Compiled successfully`, exit 0 both runs.

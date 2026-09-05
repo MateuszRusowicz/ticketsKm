@@ -121,7 +121,25 @@
     "startOver": "Back to the concert",
     "holding": {
       "heading": "Seats held",
-      "body": "We are holding your seats until {time}. Payment goes live in the next release."
+      "body": "We are holding your seats until {time}.",
+      "payButton": "Pay now",
+      "paymentLoading": "Initialising payment…",
+      "paymentError": "Payment error. Please try again.",
+      "notFound": "Order not found.",
+      "notPendingPAID": "This order has already been paid.",
+      "notPendingFAILED": "This order was cancelled due to a payment error.",
+      "notPendingCANCELLED": "This order has been cancelled.",
+      "notPendingEXPIRED": "Your hold has expired.",
+      "notPendingREFUNDED": "This order has been refunded.",
+      "piReuseAlreadyPaid": "This order has already been paid.",
+      "piReuseNotPending": "Payment cannot be started for this order.",
+      "sepaNote": "SEPA direct debit can take up to 5 business days to complete.",
+      "currencyMethodNote": "Available payment methods depend on the order currency."
+    },
+    "processing": {
+      "heading": "Payment in progress",
+      "body": "Your payment is being processed. This page will refresh automatically.",
+      "timeoutBody": "Payment is taking longer than expected. Check your email or contact us."
     },
     "expired": {
       "heading": "Hold expired",
@@ -133,7 +151,11 @@
     },
     "paid": {
       "heading": "Order paid",
-      "body": "Tickets will appear here once payment goes live."
+      "body": "Tickets will be sent to your email address."
+    },
+    "refunded": {
+      "heading": "Order refunded",
+      "body": "A refund for this order has been initiated."
     }
   }
 }

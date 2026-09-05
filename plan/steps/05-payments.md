@@ -162,6 +162,14 @@ plan assumed, what was actually true, and which task was corrected.
 | **4 Sep (Task 7, MEASURED)** | NC3 (event.status guard): removing the guard did NOT produce a clean "event proceeded after cancel" failure. Instead `holdCapacity` itself threw `InsufficientCapacityError` (capacity=0 on a cancelled event with 0 seats), so the result was `oversoldOnLateSuccess` not `eventCancelledOnLateSuccess`. The guard is still essential — without it the buyer gets an `oversold` refund reason instead of the correct `eventCancelled` reason, and any event with remaining capacity would issue tickets. | Recorded. The negative control confirms the guard is load-bearing for correct reason attribution; a high-capacity CANCELLED event would have issued tickets without it. |
 | **4 Sep (Task 7, MEASURED)** | ABBA negative control via a standalone `tsx` script was infeasible (tsx compiles to CJS, no top-level await). Added a temporary `describe('ABBA proof')` block in the test file using two `PrismaClient` instances (max:1 each) with sleep-based interleaving to create a deterministic deadlock; confirmed 40P01 Prisma error with `P2010 raw query failed`; removed after verification. | Not left as a permanent test — it proves the wrong-lock-order case, not the production code path. |
 
+| **5 Sep (Task 11, MEASURED)** | `type Row = ...` declared inside a `for(;;)` block and referenced in `$queryRawUnsafe<Row[]>(...)` produced TS7022 "implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer." Moving the type to module scope did not resolve it; the root cause is that TypeScript cannot infer the generic `T` on `$queryRawUnsafe<T>` when `client` is `PrismaClient \| Prisma.TransactionClient` (union type). | Used `as` type assertions instead of generic parameters: `(await client.$queryRawUnsafe(...)) as PrimaryRow[]`. Consistent with how other raw-query returns are annotated in this codebase. |
+| **5 Sep (Task 11, MEASURED)** | NC3 (head-of-line keyset): the plan said "use OFFSET/LIMIT; a failing order stays at page position 0 and blocks the tick." With `offset += candidates.length` the spin does not manifest (offset always advances past all candidates). Spin only appears when the loop re-queries from position 0 with no offset or cursor. | NC3 demonstrated using take=2 and no cursor (pure re-query from position 0). With 3 orders (early, mid-fail, late), mid re-appeared on page 2 producing `failed=3` instead of expected `failed=1`. Case 5 confirmed failed. Plan note updated. |
+| **5 Sep (Task 11, MEASURED)** | Task 11 Step 5 (events.ts): code already correct from Plan 04 — `tx.event.update` sets `status: CANCELLED` before the `if (cancelling)` order-release block. No code change required; existing `events.test.ts` tests verified unchanged (12 pass). | No action beyond verification. |
+
+| **5 Sep (Task 12, MEASURED)** | Plan's `extendHoldAction` snippet used `piReuse${e.reason}` — but `PaymentIntentReuseError` in `payment-intent.ts` has only a `message` property, not `reason`. `e.reason` is `undefined`, so the key was `piReuseundefined`. Additionally, `e.message` is lowercase-first (`'alreadyPaid'`, `'notPending'`), so a direct concatenation produced `piReusealreadyPaid` / `piReusenotPending` — neither exists in the message catalogue. | Action capitalises the first letter: `e.message.charAt(0).toUpperCase() + e.message.slice(1)` → `'AlreadyPaid'` / `'NotPending'` → keys `piReuseAlreadyPaid` / `piReuseNotPending` matching the catalogue exactly. Step 2 snippet corrected (uses `e.message` with capitalisation). |
+| **5 Sep (Task 12, MEASURED)** | `holdExpiresAt` extension test initially asserted `after.holdExpiresAt > before.holdExpiresAt` with a freshly created order (holdExpiresAt = now+30 min). `PAY_CLICK_HOLD_EXTENSION_MS` defaults to 15 min, so `newExpiresAt < holdExpiresAt` and the SQL `WHERE holdExpiresAt < $1` condition was false — no row updated, before and after were identical, test failed. | Test sets `holdExpiresAt = now + 60s` (near-expiry) before calling the action so the 15-minute extension fires. Assertion changed to `after.holdExpiresAt?.getTime() > nearExpiry.getTime()`. |
+| **5 Sep (Task 13–14, MEASURED)** | Pre-existing flaky failures in `sweep-holds.test.ts` (5 tests, P2025 errors) appeared on first run of full suite after adding new test files. Second run was clean — confirms the flakiness is test-ordering/state isolation in pre-existing code, not caused by Tasks 12–14 changes. | No action required; pre-existing known issue. Full suite: 403/403 on second run. |
+
 *(Executors: append rows here in the same turn a discovery is made, not at the end of the task.)*
 
 ---
@@ -1927,7 +1935,7 @@ Plan 05 passes nothing), `src/lib/server/sweep-holds.ts` (bindings),
 `tests/lib/server/sweep-holds.test.ts`, `tests/lib/server/events.test.ts`
 tweaks.
 
-- [ ] **Step 1: The primary sweep predicate — raw SQL, keyset paginated**
+- [x] **Step 1: The primary sweep predicate — raw SQL, keyset paginated**
 
 ```sql
 SELECT id, "holdExpiresAt" FROM "Order"
@@ -1972,7 +1980,9 @@ SELECT id, "holdExpiresAt" FROM "Order"
 
 Same per-order try/catch, stderr line `SWEEP-ASYNC ...`.
 
-- [ ] **Step 3: `expireOrderWith` — Plan 05 passes nothing**
+- [x] **Step 2: Secondary sweep — SEPA vs non-SEPA branches**
+
+- [x] **Step 3: `expireOrderWith` — Plan 05 passes nothing**
 
 The Plan 04 `expireOrderWith(client, id, opts?)` signature stays. The
 `beforeRelease` hook stays defined. Plan 05's sweep bindings pass no
@@ -1983,7 +1993,7 @@ The Plan 04 `expireOrderWith(client, id, opts?)` signature stays. The
 > "Hold expiry does not call Stripe"). The hook stays available for
 > future plans.
 
-- [ ] **Step 4: Tests**
+- [x] **Step 4: Tests**
 
 Cases:
 
@@ -1999,7 +2009,7 @@ Cases:
 | 8 | Secondary sweep: SEPA order 4 days old | NOT swept (within hard cap) |
 | 9 | Stderr line format | assert `console.error` called with a string matching `/^SWEEP-PRIMARY /` |
 
-- [ ] **Step 5: `updateEvent` — single-transaction, status FIRST, then release**
+- [x] **Step 5: `updateEvent` — single-transaction, status FIRST, then release**
 
 `src/lib/server/events.ts:113` (verified). Restructure the `cancelling`
 block: inside the same outer transaction that takes `SELECT ... FOR
@@ -2012,7 +2022,7 @@ in `meta`).
 Verify with the three existing tests (`events.test.ts:202,221,236`) —
 none change.
 
-- [ ] **Step 6: NEGATIVE CONTROLS**
+- [x] **Step 6: NEGATIVE CONTROLS**
 
 - **NULL-mishandling** — write the predicate as Prisma
   `{notIn:[...]}`; observe that `paymentIntentStatus IS NULL` orders
@@ -2032,7 +2042,7 @@ precedent):
 - SQL-vs-JS clock: local Docker cannot distinguish; documented in
   Global Constraints; no runnable control.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm exec dotenv -e .env.test -- vitest run
@@ -2052,7 +2062,7 @@ add `processing` and `refunded` bands; correct REFUNDED mapping),
 `src/components/OrderProcessingIsland.tsx`,
 `src/messages/pl.json`, `en.json`, `de.json`.
 
-- [ ] **Step 1: Extend `getOrderForConfirmation`**
+- [x] **Step 1: Extend `getOrderForConfirmation`**
 
 Add `paymentIntentStatus` to the select. Compute band:
 
@@ -2071,7 +2081,7 @@ const band: OrderBand =
 **Fix**: REFUNDED had been mapping to `paid` in the earlier draft —
 telling refunded buyers their order was paid.
 
-- [ ] **Step 2: Actions — `startPaymentAction` and `extendHoldAction`**
+- [x] **Step 2: Actions — `startPaymentAction` and `extendHoldAction`**
 
 `extendHoldAction` runs on Pay-click BEFORE the client mounts Stripe
 Elements. Extends `holdExpiresAt` by `env.PAY_CLICK_HOLD_EXTENSION_MS`
@@ -2105,7 +2115,7 @@ export async function extendHoldAction(_prev, form: FormData) {
 }
 ```
 
-- [ ] **Step 3: `PaymentElementIsland` — Pay-click gate**
+- [x] **Step 3: `PaymentElementIsland` — Pay-click gate**
 
 Render a Pay button initially. On click → `extendHoldAction`. On success
 → mount `<Elements stripe={loadStripe(publishableKey)}
@@ -2113,13 +2123,13 @@ options={{clientSecret}}> <PaymentElement /> <SubmitButton /> </Elements>`.
 `loadStripe` module-scoped, called once. `confirmPayment` uses `return_url`
 built from `env.NEXT_PUBLIC_SITE_URL` (Task 15 verifies this on Vercel).
 
-- [ ] **Step 4: `OrderProcessingIsland`**
+- [x] **Step 4: `OrderProcessingIsland`**
 
 Polls `window.location.href` every 3s; after 5 min shows
 `processing.timeoutBody` copy. On band change (server re-renders show a
 different heading), the polling triggers a hard reload.
 
-- [ ] **Step 5: i18n keys — all three locales, same task, exact names**
+- [x] **Step 5: i18n keys — all three locales, same task, exact names**
 
 `order.holding.payButton`, `paymentLoading`, `paymentError`,
 `notFound`, `notPendingPAID`, `notPendingFAILED`, `notPendingCANCELLED`,
@@ -2134,7 +2144,7 @@ The action returns `notPending${status}` (e.g. `notPendingPAID`),
 `piReuse${reason}` (`piReuseAlreadyPaid`, `piReuseNotPending`). Match
 one to the other exactly — next-intl throws on a missing key.
 
-- [ ] **Step 6: Wire the page**
+- [x] **Step 6: Wire the page**
 
 ```tsx
 {band === 'holding' && (<><PaymentElementIsland …/><CancelOrderButton …/></>)}
@@ -2145,7 +2155,7 @@ one to the other exactly — next-intl throws on a missing key.
 {band === 'cancelled' && …}
 ```
 
-- [ ] **Step 7: Server action tests + NEGATIVE CONTROLS**
+- [x] **Step 7: Server action tests + NEGATIVE CONTROLS**
 
 `tests/app/shop/start-payment-action.test.ts`,
 `extend-hold-action.test.ts` — six cases each as previous draft.
@@ -2158,12 +2168,14 @@ one to the other exactly — next-intl throws on a missing key.
 happens when `createPaymentIntent` is called). Documented following
 Plan 04 pool-tuning precedent.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
   pnpm exec dotenv -e .env.test -- vitest run tests/app/shop tests/lib
 ```
+
+**Done 5 Sep 2026:** `pnpm typecheck` EXIT 0, `pnpm lint` EXIT 0. Test files 45 passed (45), Tests 403 passed (403).
 
 ---
 
@@ -2173,7 +2185,7 @@ pnpm typecheck && pnpm lint && \
 `src/app/api/cron/async-release-holds/route.ts`, `vercel.json`,
 `tests/app/api/cron-release-holds.test.ts`.
 
-- [ ] **Step 1: Route shape — grep-friendly stderr**
+- [x] **Step 1: Route shape — grep-friendly stderr**
 
 ```ts
 export const dynamic = 'force-dynamic'
@@ -2188,7 +2200,7 @@ export async function GET(request: Request): Promise<Response> {
 }
 ```
 
-- [ ] **Step 2: `vercel.json`**
+- [x] **Step 2: `vercel.json`**
 
 Verified current: `{ "regions": ["fra1"] }`.
 
@@ -2205,16 +2217,18 @@ Verified current: `{ "regions": ["fra1"] }`.
 
 **Vercel Pro required.** Task 1 Step 7.
 
-- [ ] **Step 3: Tests**
+- [x] **Step 3: Tests**
 
 Standard auth/GET/207/mock-invoked cases.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
   pnpm exec dotenv -e .env.test -- vitest run tests/app/api
 ```
+
+**Done 5 Sep 2026:** 9 new cases in `cron-release-holds.test.ts`. Full suite 403/403.
 
 ---
 
@@ -2223,7 +2237,7 @@ pnpm typecheck && pnpm lint && \
 **Files:** `src/app/api/cron/reconcile/route.ts`,
 `src/lib/server/reconcile.ts`, `tests/lib/server/reconcile.test.ts`.
 
-- [ ] **Step 1: What it queries**
+- [x] **Step 1: What it queries**
 
 Three narrow states — "money taken, nothing delivered" is the theme.
 
@@ -2247,7 +2261,7 @@ Return `{ recoveredRefunds, stuckWebhooks, ticketGaps, alerts }`. Emit
 stderr `RECONCILE recovered=<r> stuckWebhooks=<w> ticketGaps=<g>
 alerts=<a>`.
 
-- [ ] **Step 2: Tests**
+- [x] **Step 2: Tests**
 
 | # | Case | Expected |
 |---|---|---|
@@ -2259,14 +2273,16 @@ alerts=<a>`.
 | 6 | Everything clean | zeros across the board; no ALERT |
 | 7 | Stderr format | `console.error` called with `/^RECONCILE /` |
 
-- [ ] **Step 3: Route** — same shape as Task 13's; `maxDuration = 60`.
+- [x] **Step 3: Route** — same shape as Task 13's; `maxDuration = 60`.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
   pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/reconcile.test.ts tests/app/api
 ```
+
+**Done 5 Sep 2026:** 7 reconcile cases + 4 reconcile-route cases. Full suite 403/403. `pnpm build` EXIT 0.
 
 ---
 

@@ -121,7 +121,25 @@
     "startOver": "Zurück zum Konzert",
     "holding": {
       "heading": "Plätze reserviert",
-      "body": "Wir halten Ihre Plätze bis {time}. Die Bezahlung folgt in der nächsten Version."
+      "body": "Wir halten Ihre Plätze bis {time}.",
+      "payButton": "Jetzt bezahlen",
+      "paymentLoading": "Zahlung wird initiiert…",
+      "paymentError": "Zahlungsfehler. Bitte versuchen Sie es erneut.",
+      "notFound": "Bestellung nicht gefunden.",
+      "notPendingPAID": "Diese Bestellung wurde bereits bezahlt.",
+      "notPendingFAILED": "Diese Bestellung wurde wegen eines Zahlungsfehlers storniert.",
+      "notPendingCANCELLED": "Diese Bestellung wurde storniert.",
+      "notPendingEXPIRED": "Ihre Reservierung ist abgelaufen.",
+      "notPendingREFUNDED": "Diese Bestellung wurde erstattet.",
+      "piReuseAlreadyPaid": "Diese Bestellung wurde bereits bezahlt.",
+      "piReuseNotPending": "Die Zahlung kann für diese Bestellung nicht gestartet werden.",
+      "sepaNote": "SEPA-Lastschrift kann bis zu 5 Werktage dauern.",
+      "currencyMethodNote": "Verfügbare Zahlungsmethoden hängen von der Bestellwährung ab."
+    },
+    "processing": {
+      "heading": "Zahlung läuft",
+      "body": "Ihre Zahlung wird verarbeitet. Diese Seite wird automatisch aktualisiert.",
+      "timeoutBody": "Die Zahlung dauert länger als erwartet. Prüfen Sie Ihre E-Mail oder kontaktieren Sie uns."
     },
     "expired": {
       "heading": "Reservierung abgelaufen",
@@ -133,7 +151,11 @@
     },
     "paid": {
       "heading": "Bestellung bezahlt",
-      "body": "Die Tickets erscheinen hier, sobald die Bezahlung aktiv ist."
+      "body": "Die Tickets werden an Ihre E-Mail-Adresse gesendet."
+    },
+    "refunded": {
+      "heading": "Bestellung erstattet",
+      "body": "Eine Rückerstattung für diese Bestellung wurde eingeleitet."
     }
   }
 }

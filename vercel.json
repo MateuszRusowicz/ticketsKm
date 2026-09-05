@@ -1,3 +1,8 @@
 {
-  "regions": ["fra1"]
+  "regions": ["fra1"],
+  "crons": [
+    { "path": "/api/cron/release-holds", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/async-release-holds", "schedule": "*/30 * * * *" },
+    { "path": "/api/cron/reconcile", "schedule": "*/10 * * * *" }
+  ]
 }
