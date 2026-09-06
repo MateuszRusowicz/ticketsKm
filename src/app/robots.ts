@@ -20,7 +20,7 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: '*',
-      disallow: ['/', '/*/order/'],
+      disallow: ['/', '/*/order/', '/api/webhooks/', '/api/cron/'],
     },
   }
 }

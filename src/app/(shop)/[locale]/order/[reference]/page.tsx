@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { CancelOrderButton } from '@/components/CancelOrderButton'
+import { OrderProcessingIsland } from '@/components/OrderProcessingIsland'
+import { PaymentElementIsland } from '@/components/PaymentElementIsland'
 import { Link } from '@/i18n/routing'
 import { getOrderForConfirmation } from '@/lib/server/order-lookup'
 import { expireOrder } from '@/lib/server/orders'
@@ -48,13 +50,25 @@ export default async function OrderConfirmationPage({ params, searchParams }: Pr
 
   return (
     <main className="mx-auto max-w-[800px] px-4 py-10">
-      <h1 className="text-2xl font-semibold">{t(`${band}.heading` as 'holding.heading')}</h1>
+      <h1 className="text-2xl font-semibold">
+        {band === 'processing'
+          ? t('processing.heading')
+          : t(`${band}.heading` as 'holding.heading')}
+      </h1>
 
-      <p className="mt-3 text-text-secondary">
-        {band === 'holding' && order.holdExpiresAt
-          ? t('holding.body', { time: formatConcertTime(order.holdExpiresAt, locale) })
-          : t(`${band}.body` as 'holding.body')}
-      </p>
+      {band === 'holding' && order.holdExpiresAt && (
+        <p className="mt-3 text-text-secondary">
+          {t('holding.body', { time: formatConcertTime(order.holdExpiresAt, locale) })}
+        </p>
+      )}
+
+      {band === 'processing' && <OrderProcessingIsland />}
+
+      {(band === 'expired' || band === 'cancelled' || band === 'paid' || band === 'refunded') && (
+        <p className="mt-3 text-text-secondary">
+          {t(`${band}.body` as 'holding.body')}
+        </p>
+      )}
 
       <dl className="mt-8 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 border-t border-border pt-6">
         <dt className="text-text-secondary">{t('reference')}</dt>
@@ -84,12 +98,19 @@ export default async function OrderConfirmationPage({ params, searchParams }: Pr
       </dl>
 
       {band === 'holding' && (
-        <CancelOrderButton
-          reference={order.reference}
-          accessToken={token}
-          label={t('cancel')}
-          notFoundLabel={t('cancelFailed')}
-        />
+        <>
+          <PaymentElementIsland
+            reference={order.reference}
+            accessToken={token}
+            locale={locale}
+          />
+          <CancelOrderButton
+            reference={order.reference}
+            accessToken={token}
+            label={t('cancel')}
+            notFoundLabel={t('cancelFailed')}
+          />
+        </>
       )}
 
       {(band === 'expired' || band === 'cancelled') && (

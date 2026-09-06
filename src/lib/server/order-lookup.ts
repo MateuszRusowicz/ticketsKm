@@ -4,12 +4,19 @@ import type { Locale } from '@/lib/shared/locale'
 import { db } from './db'
 
 /**
- * Which of four states the confirmation page renders.
- * `expired` is a PENDING order past its hold — the page expires it before
- * rendering, so the buyer is not told the seats are free while their own
- * stale hold still counts against the concert.
+ * Which state the confirmation page renders.
+ *
+ * - `holding`    — PENDING order, hold active, buyer has not yet paid
+ * - `processing` — PENDING order, async payment in-flight (BLIK/P24/SEPA)
+ * - `expired`    — PENDING order past its hold window
+ * - `cancelled`  — CANCELLED, FAILED, or EXPIRED order
+ * - `paid`       — PAID order
+ * - `refunded`   — REFUNDED or PARTIALLY_REFUNDED order
+ *
+ * `expired` is expanded on page load (the server calls `expireOrder` before
+ * rendering) so the buyer is never told their stale hold still counts.
  */
-export type OrderBand = 'holding' | 'expired' | 'cancelled' | 'paid'
+export type OrderBand = 'holding' | 'processing' | 'expired' | 'cancelled' | 'paid' | 'refunded'
 
 export type OrderConfirmation = {
   order: {
@@ -54,6 +61,7 @@ export async function getOrderForConfirmation(
       reference: true,
       accessToken: true,
       status: true,
+      paymentIntentStatus: true,
       firstName: true,
       lastName: true,
       total: true,
@@ -90,14 +98,23 @@ export async function getOrderForConfirmation(
   const event = item.ticketType.event
   const now = Date.now()
 
+  // REFUNDED / PARTIALLY_REFUNDED must resolve to 'refunded', not 'paid'.
+  // Previously both mapped to 'paid' — telling refunded buyers their order
+  // was paid. This was a live defect once Task 7 enabled auto-refund on
+  // late success (4 Sep 2026 critique finding).
   const band: OrderBand =
-    order.status === 'PAID' || order.status === 'REFUNDED'
-      ? 'paid'
-      : order.status !== 'PENDING'
-        ? 'cancelled'
-        : (order.holdExpiresAt?.getTime() ?? 0) <= now
-          ? 'expired'
-          : 'holding'
+    order.status === 'REFUNDED' || order.status === 'PARTIALLY_REFUNDED'
+      ? 'refunded'
+      : order.status === 'PAID'
+        ? 'paid'
+        : order.status !== 'PENDING'
+          ? 'cancelled'
+          : order.paymentIntentStatus != null &&
+              ['processing', 'requires_action', 'requires_capture'].includes(order.paymentIntentStatus)
+            ? 'processing'
+            : (order.holdExpiresAt?.getTime() ?? 0) <= now
+              ? 'expired'
+              : 'holding'
 
   // attendeeNames is deliberately never selected: it is PII the confirmation
   // flow has no need to display, token or not.

@@ -79,38 +79,76 @@ across three plans — do not implement a later plan's step early:
 > order `EXPIRED`, and writes an audit entry. Plan 04 ships the callable
 > function plus a `pnpm holds:sweep` script; it wires no schedule.
 >
-> **Plan 05's sweep** wraps Plan 04's through the `beforeRelease` hook and
-> cancels the Stripe `PaymentIntent` **before** the hold is released, so a late
-> confirmation cannot succeed against seats already resold. Plan 05 also owns
-> the route handler and the `vercel.json` schedule. The `IS NULL` clause above
-> is what keeps Plan 04's sweep from expiring Przelewy24 / Klarna / SEPA
-> orders, which legitimately sit in `processing` for minutes to days.
+> **Plan 05's primary sweep** filters `PENDING` orders on
+> `(paymentIntentStatus IS NULL OR paymentIntentStatus NOT IN
+> ('processing','requires_action','requires_capture','requires_confirmation','succeeded'))`,
+> releases seats, and marks the order `EXPIRED` — **no Stripe call**. Runs
+> every 5 minutes on Vercel cron. The predicate protects orders where a
+> payment is genuinely in flight (the buyer is mid-3DS, mid-BLIK, or
+> mid-redirect): those orders' `paymentIntentStatus` is `processing`,
+> `requires_action`, or similar, and the sweep skips them. `holdExpiresAt`
+> is extended on Pay-click so a buyer who clicks Pay just before the deadline
+> is never caught.
+>
+> **Plan 05's secondary sweep** handles async methods that stay `processing`
+> past the primary window: cutoffs computed as `now() - make_interval(...)` in
+> SQL, days-based for SEPA (default 5 business days), seconds-based for
+> others (default 6 hours). Same `expireOrder` path, same no-Stripe-call
+> policy.
 >
 > **Plan 06's sweep** additionally decrements a promo code's `usedCount` when
 > the expired order carried one. No `Order` created by Plan 04 has a
 > `promoCodeId`, so this is inert until then.
 
-The original five-step list follows, and describes the **fully assembled**
-sweep once all three plans have landed:
+The assembled sweep steps for Plans 04–06:
 
-1. Find orders where `status = PENDING AND holdExpiresAt < now()`.
+1. Find orders where `status = PENDING AND holdExpiresAt < now()` (filtered by
+   PI-status predicate in Plan 05).
 2. Decrement `heldCount` by the order quantity.
-3. Decrement the promo code's `usedCount` if one was applied.
+3. Decrement the promo code's `usedCount` if one was applied (Plan 06).
 4. Set the order to `EXPIRED`.
-5. **Cancel the Stripe PaymentIntent** so a late confirmation cannot succeed.
 
-Step 5 is easy to forget and causes the nastiest bug in the system: a buyer pays
-15 seconds after their hold expired, on a concert that has since sold out.
+> **Superseded (4 September 2026):** An earlier version of this section added a
+> fifth step: "Cancel the Stripe PaymentIntent before releasing seats, so a late
+> confirmation cannot succeed." The owner decided on 4 Sep 2026 that hold expiry
+> does **not** call Stripe. An abandoned card checkout cannot charge — the buyer
+> never confirmed — so cancelling is hygiene, not safety. The dangerous case
+> (releasing seats while a payment is genuinely in flight) is handled by the
+> `paymentIntentStatus` predicate on the sweep, not by a network call. A late
+> `payment_intent.succeeded` after release takes the reclaim-or-refund path
+> described in § "The oversell race, handled explicitly" below. Anyone who finds
+> the old five-step list (with step 5 calling `stripe.paymentIntents.cancel`)
+> quoted elsewhere should treat `plan/00-decisions.md` under "Hold expiry does
+> not call Stripe" as authoritative.
 
 ### The oversell race, handled explicitly
 
-Even with cancellation there is a window where a payment succeeds for an expired
-hold. The webhook handler therefore re-checks capacity before fulfilling:
+A payment can succeed after its seats have been released — either because the
+hold expired while the buyer was in the confirmation flow, or because an event
+cancellation released the event's capacity before the payment settled.
+`fulfilOrder` (Plan 05, Task 7) handles it with two paths:
 
-- **Capacity available** → re-claim it and fulfil normally. The buyer never knows.
-- **No capacity** → automatically refund the PaymentIntent in full, set the
-  order to `CANCELLED`, email the buyer an apology in their language, and write
-  an `AuditLog` entry. Staff see it on the dashboard.
+- **Capacity available** → call `reclaimCapacityForOrder`, which takes a
+  `SELECT … FOR UPDATE` on the `Event` row first (matching `holdCapacity`'s
+  lock order to prevent ABBA deadlocks), then runs the conditional `UPDATE` on
+  `TicketType`. If the reclaim succeeds, the order is fulfilled normally and
+  the buyer never knows. `reclaimCapacityForOrder` is guarded by an
+  `Event.status IN ('ON_SALE', 'SOLD_OUT')` check — it throws
+  `EventNoLongerPurchasableError` if the event is `CANCELLED`, routing to the
+  refund path.
+- **No capacity** (or event cancelled) → two-transaction refund: (a) tx1 marks
+  `refundRequestedAt` and writes an `AuditLog`; (b) `stripe.refunds.create`
+  runs outside any DB transaction; (c) tx2 persists `stripeRefundId` and sets
+  `status = REFUNDED`. Reconciliation recovers anything stuck between (b) and
+  (c). The buyer receives an automated notification (Plan 06).
+
+This path is the **primary** safety net against oversell, not a secondary one.
+Hold expiry does not call Stripe (owner decision 4 Sep 2026 — see
+`plan/00-decisions.md` § "Hold expiry does not call Stripe"), so a late payment
+succeeding after release is an expected event, not an edge case. The
+`paymentIntentStatus` predicate on the sweep filters out orders where the buyer
+is actively paying and reduces the frequency of this path, but it cannot
+eliminate it.
 
 Automatically refunding is the right behaviour: the alternative is a person
 standing at the door of a full room holding a ticket the system sold them.
@@ -202,20 +240,37 @@ Server-side, in order:
    charge, so this path must exist.
 8. **Otherwise create the PaymentIntent:**
    ```ts
+   const allowedMethods = await computeAllowedPaymentMethods(order.id)
    stripe.paymentIntents.create({
      amount: order.total,
      currency: order.currency.toLowerCase(),
-     automatic_payment_methods: { enabled: true },
+     payment_method_types: allowedMethods,
      metadata: { orderId: order.id, reference: order.reference },
      receipt_email: order.email,
    }, { idempotencyKey: `pi_${order.id}` })
    ```
    The idempotency key means a retried request never creates a second charge.
+   `computeAllowedPaymentMethods` (Plan 05, Task 5, `src/lib/server/payment-methods.ts`)
+   returns a server-side allow-list based on the order's currency, event capacity,
+   and the SEPA guardrails (cap share, near-sellout threshold, hard timeout). Using
+   `payment_method_types` instead of `automatic_payment_methods` is the only way to
+   enforce per-order guardrails: `automatic_payment_methods` has no per-order block-list,
+   so the SEPA cap cannot be applied at PI creation without switching to an explicit list.
+   If the Stripe allow-list does not contain `sepa_debit`, Stripe refuses SEPA
+   confirmation for that PI — the guardrail is enforced by Stripe, not merely by
+   hiding the option in the UI.
 9. Return `{ clientSecret, reference }`.
 
-Payment methods are **not** listed in code. `automatic_payment_methods` lets
-Stripe decide from currency, amount and buyer country, using what is enabled in
-the dashboard. Adding PayPal later is a dashboard toggle, not a deploy.
+> **Superseded (4 September 2026):** An earlier draft of this section used
+> `automatic_payment_methods: { enabled: true }` and noted that "adding PayPal
+> later is a dashboard toggle, not a deploy." That approach was replaced because
+> `automatic_payment_methods` cannot enforce per-order guardrails — in particular
+> the SEPA cap that limits concurrent async holds to 10 % of capacity. The
+> allow-list is now computed server-side on every Pay-click and passed as
+> `payment_method_types`. Payment method configuration still lives primarily in
+> the Stripe dashboard (which methods are enabled), but the per-order subset is
+> computed in code. Adding a new method still needs only a dashboard toggle plus
+> a one-line addition to `computeAllowedPaymentMethods`.
 
 ## The webhook
 

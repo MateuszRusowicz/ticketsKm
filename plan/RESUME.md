@@ -68,14 +68,19 @@ merged. Vercel builds `development` and deploys green.
 verified, and blocked only on the owner. Its Findings log has 103 entries; the
 ones that explain the design are the 4 Sep rows.
 
-**Four things are blocked on the owner** — see STATUS.md's table for detail:
-Stripe key *names* (`.env` has `STRIPE_API_KEY`, the plan wants
-`STRIPE_PUBLISHABLE_KEY`), the webhook secret (which cannot exist until
-`stripe listen` runs), Vercel Pro (without it the sweeps never run at all), and
-`NEXT_PUBLIC_SITE_URL` on Vercel (wrong value silently breaks four of six demo
-flows, in production only).
+**The Stripe blockers cleared 4 Sep 2026.** Plan 05 **Task 1 is done bar Step
+7**: test-mode account `acct_1UBpQ6GVCpToPFr7` (country PL), all three
+`STRIPE_*` variables in **`.env`** with prefixes verified, payment methods
+enabled, CLI v1.50.10 installed. See STATUS.md for the three traps that cost
+time — swapped key names, the CLI not being in apt, and sandbox-vs-test-mode at
+`stripe login`.
 
-**Tasks 0–4 can run today** without any of that.
+**Two owner items remain**, neither blocking Tasks 0–14:
+Vercel Pro (Task 13 — without it the sweeps never run at all) and
+`NEXT_PUBLIC_SITE_URL` on Vercel (Task 15 — a wrong value silently breaks four
+of six demo flows, in production only).
+
+**Tasks 0–14 can run today.**
 
 **Three design decisions that will look wrong without their reasoning:**
 

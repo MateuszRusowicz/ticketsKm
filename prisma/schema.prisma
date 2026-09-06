@@ -170,8 +170,28 @@ model Order {
   accessToken           String    @default(uuid())
   cancelledAt           DateTime?
 
+  // Mirrors Stripe PaymentIntent.status. Written by createPaymentIntent
+  // in the SAME UPDATE as stripePaymentIntentId (initial value
+  // 'requires_confirmation'), then updated by every subsequent webhook.
+  paymentIntentStatus   String?
+
+  // The payment method the buyer chose. Populated by the FIRST webhook
+  // that carries method details (via pi.latest_charge or
+  // pi.payment_method_types when unambiguous). Used by the SEPA cap.
+  paymentMethodType     String?
+
+  // Phase 1 of the two-transaction refund. When set and stripeRefundId
+  // IS NULL, reconciliation resumes the refund.
+  refundRequestedAt     DateTime?
+
+  // Phase 3 of the two-transaction refund. Unique to guarantee refund
+  // exactly-once independent of Stripe idempotency-key retention.
+  stripeRefundId        String?   @unique
+
   @@index([email])
   @@index([status, holdExpiresAt])
+  @@index([status, holdExpiresAt, paymentIntentStatus])
+  @@index([refundRequestedAt])
 }
 
 model OrderItem {
@@ -264,6 +284,10 @@ model StripeWebhookEvent {
   receivedAt    DateTime  @default(now())
   processedAt   DateTime?
   error         String?
+  attemptCount  Int       @default(0)
+  deadLettered  Boolean   @default(false)
+
+  @@index([processedAt, receivedAt])
 }
 
 model AuditLog {

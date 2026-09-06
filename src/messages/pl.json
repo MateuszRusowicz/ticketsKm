@@ -121,7 +121,25 @@
     "startOver": "Wróć do koncertu",
     "holding": {
       "heading": "Miejsca zarezerwowane",
-      "body": "Trzymamy Twoje miejsca do {time}. Płatności uruchomimy w kolejnej wersji serwisu."
+      "body": "Trzymamy Twoje miejsca do {time}.",
+      "payButton": "Zapłać teraz",
+      "paymentLoading": "Inicjowanie płatności…",
+      "paymentError": "Błąd płatności. Spróbuj ponownie.",
+      "notFound": "Zamówienie nie znalezione.",
+      "notPendingPAID": "To zamówienie zostało już opłacone.",
+      "notPendingFAILED": "To zamówienie zostało anulowane z powodu błędu płatności.",
+      "notPendingCANCELLED": "To zamówienie zostało anulowane.",
+      "notPendingEXPIRED": "Czas rezerwacji wygasł.",
+      "notPendingREFUNDED": "To zamówienie zostało zwrócone.",
+      "piReuseAlreadyPaid": "To zamówienie zostało już opłacone.",
+      "piReuseNotPending": "Nie można zainicjować płatności dla tego zamówienia.",
+      "sepaNote": "Polecenie zapłaty SEPA może zająć do 5 dni roboczych.",
+      "currencyMethodNote": "Dostępne metody płatności zależą od waluty zamówienia."
+    },
+    "processing": {
+      "heading": "Płatność w toku",
+      "body": "Twoja płatność jest przetwarzana. Ta strona odświeży się automatycznie.",
+      "timeoutBody": "Płatność trwa dłużej niż zwykle. Sprawdź swój e-mail lub skontaktuj się z nami."
     },
     "expired": {
       "heading": "Rezerwacja wygasła",
@@ -133,7 +151,11 @@
     },
     "paid": {
       "heading": "Zamówienie opłacone",
-      "body": "Bilety pojawią się tutaj po uruchomieniu płatności."
+      "body": "Bilety zostaną wysłane na Twój adres e-mail."
+    },
+    "refunded": {
+      "heading": "Zamówienie zwrócone",
+      "body": "Zwrot środków za to zamówienie został zainicjowany."
     }
   }
 }

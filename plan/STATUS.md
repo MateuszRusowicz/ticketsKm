@@ -96,6 +96,100 @@ Demo scope is now **the payment half of Plan 05** — Plan 04 landed 3 Sep 2026:
 **Deliberately outside the demo:** ticket email, PDF, QR codes, the door
 scanner, promo codes and refunds. They stay in Plans 05–07.
 
+### Plan 05 execution started 4 Sep 2026 — Tasks 0–14 done
+
+On branch **`feat/plan-05-payments`** (cut from `development`; Plan 04's branch
+is merged and deleted). Committed by the owner in two batches — `0025785`
+(Tasks 0–4) and `0f5087d` (Tasks 5–10). **Tasks 11–14 are in the working tree,
+not yet committed.**
+
+**Verified 5 Sep 2026 the way CI verifies:** `km_test` reset to empty, then the
+suite run **once** — `45 files, 403/403, exit 0`. This matters because CI uses a
+fresh Postgres container every run, so a warm local database is not evidence
+that CI will pass. See the `sweep-holds` P2025 row in the plan's Findings log:
+that flakiness is **still unresolved**, not closed — the cold-database
+reproduction simply failed to trigger it.
+
+| Task | What | State |
+|---|---|---|
+| 0 | Baseline gate | ✅ green on re-run, 290 tests |
+| 1 | Stripe account, keys, CLI, Vercel Pro | ✅ complete |
+| 2 | `stripe@19.3.1` + env schema + `.env.test` | ✅ 8 new tests |
+| 3 | Migration — 4 `Order` cols, 2 ledger cols, 3 indexes | ✅ applied to `km_dev` + `km_test` |
+| 4 | Design-doc corrections | ✅ docs only |
+| 5 | Stripe wrapper + allowed-methods | ✅ 6 tests |
+| 6 | `createPaymentIntent` — claim + PI creation | ✅ 12 tests |
+| 7 | `fulfilOrder` + `reclaimCapacityForOrder` | ✅ 11 cases |
+| 8 | Webhook dispatcher + `dispatchWebhookEvent` | ✅ complete |
+| 9 | `computeAllowedPaymentMethods` + SEPA cap | ✅ complete |
+| 10 | Webhook ingress route + ledger | ✅ complete |
+| 11 | Primary + secondary sweeps | ✅ complete |
+| 12 | Payment Element on the order page — islands, i18n, `processing`/`refunded` bands | ✅ 13 new tests (6+6+1) |
+| 13 | Cron routes + `vercel.json` | ✅ 9 new tests |
+| 14 | Reconciliation cron — three narrow states | ✅ 11 new tests (7+4) |
+| **15** | **Vercel deployment** | **next — owner action required** |
+
+**Suite is now 403 tests** across 45 files, green from a clean tree. `pnpm typecheck`, `pnpm lint`, and `pnpm build` all EXIT 0.
+
+**New files (Tasks 12–14):**
+- `src/lib/server/reconcile.ts` — reconciliation logic (stuck refunds, stuck webhooks, ticket gaps)
+- `src/components/PaymentElementIsland.tsx` — Pay-click gate, Stripe Elements mount, `return_url`
+- `src/components/OrderProcessingIsland.tsx` — polling component for `processing` band
+- `src/app/api/cron/release-holds/route.ts` — primary sweep cron, auth, 207 on failure
+- `src/app/api/cron/async-release-holds/route.ts` — SEPA/async sweep cron
+- `src/app/api/cron/reconcile/route.ts` — reconciliation cron, 207 on alerts
+- `tests/app/shop/extend-hold-action.test.ts` — 6 cases
+- `tests/app/shop/start-payment-action.test.ts` — 6 cases
+- `tests/app/api/cron-release-holds.test.ts` — 9 cases (both sweeps, auth, 207)
+- `tests/app/api/cron-reconcile.test.ts` — 4 cases
+- `tests/lib/server/reconcile.test.ts` — 7 cases
+
+**Baseline is now 300 tests** (290 + 8 env-schema + 2 schema-column), green
+**twice** from a clean tree, `✓ Compiled successfully`, exit 0 both runs.
+
+Three traps found and fixed during execution, all now in
+[`/CLAUDE.md`](../CLAUDE.md) because they recur:
+
+- **`pnpm` is not on a non-interactive shell's PATH.** `~/.bashrc` returns at
+  line 8 before nvm loads. `~/.local/bin` *is* present (Ubuntu's `~/.profile`),
+  so the shell looks healthy until the first `pnpm` call fails with exit 127.
+- **Every `prisma migrate dev` emits `DROP INDEX
+  "OrderItem_ticketTypeId_orderId_idx"`** and the line must be deleted by hand
+  each time. It is a covering index (`INCLUDE ("orderId")`) that Prisma's
+  schema language cannot express, so it reads as permanent drift. Applying it
+  silently removes the index behind Plan 04's same-buyer dedupe. Verified
+  against both databases.
+- **`prisma migrate diff --from-schema-datasource` was removed in Prisma 7** —
+  it is `--from-config-datasource`.
+
+Two defects fixed that no gate would have caught:
+
+- **`verify-holds.test.ts` timed out at 5000ms** and failed the baseline. A
+  pre-existing marginal timeout, not a Plan 04 regression: each `runVerify()`
+  spawns `pnpm exec tsx` at ~2.6s and that test spawns two, against Vitest's
+  5s default. `reset-admin-password.test.ts:24-28` had diagnosed the same
+  defect, fixed only itself, and predicted this in writing. Same
+  `SPAWN_TIMEOUT = 30_000` applied.
+- **`CRON_SECRET` was missing from `.env`**, so `pnpm dev` would not boot. The
+  plan extended `.env.test` and `.env.example` but never `.env` — which is
+  git-ignored, so no test or gate reads it. Generated; Task 2 gained the step.
+
+**Research settled:** Stripe does **not** auto-cancel abandoned PaymentIntents.
+`cancellation_reason: 'abandoned'` is user-provided, and the 7-day figure
+applies only to uncaptured `requires_capture` PIs (manual capture, which Plan 05
+does not use). Abandoned PIs linger indefinitely — harmless, since an
+unconfirmed PI cannot charge, but the clean-up is a **Plan 06** item. Recorded
+in [`00-decisions.md`](00-decisions.md#hold-expiry-does-not-call-stripe).
+
+**`03-purchase-flow.md`'s cancel-before-release mandate is now superseded** —
+the passage calling it "the nastiest bug in the system" is gone, replaced by a
+dated supersession notice pointing at `00-decisions.md`. Deliberate, per the
+4 Sep owner decision.
+
+**Still outstanding for the owner:** `NEXT_PUBLIC_SITE_URL` on Vercel must be
+`https://tickets-km.vercel.app` (Task 15) — a wrong value breaks four of the six
+demo flows, and only in production.
+
 **Next up: EXECUTE Plan 05 (payments), checkout half only.**
 [`steps/05-payments.md`](steps/05-payments.md) — **written, critiqued twice,
 verified, and ready.** 17 tasks (0–16), 2391 lines, 103 findings entries.
@@ -159,17 +253,37 @@ rejected. The alert is `console.error('RECONCILE alerts=…')` on **stderr**
 (Vercel captures stderr, not response bodies) and is documented as a **stopgap
 until Plan 07's admin dashboard** — not a real alerting system.
 
-### Blocked on the owner before Task 5
+### Blocked on the owner before Task 5 — **cleared 4 Sep 2026, except Vercel Pro**
 
-| # | What | Notes |
+Plan 05 **Task 1 is done bar Step 7.** The local Stripe environment is complete
+and verified; nothing now blocks Tasks 0–14.
+
+| # | What | State |
 |---|---|---|
-| 1 | **Stripe key names do not match.** `.env` has `STRIPE_API_KEY` + `STRIPE_SECRET_KEY`; Plan 05 expects `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`. Rename, and confirm the publishable key starts `pk_test_` and the secret `sk_test_`. | `.env` is git-ignored and has never been committed — verified 4 Sep. |
-| 2 | **`STRIPE_WEBHOOK_SECRET` does not exist yet and cannot.** It is produced by `stripe listen` locally, and separately by registering the endpoint in the Stripe dashboard for production. **They are two different values.** | Plan 05 Task 1 and Task 15. |
-| 3 | **Vercel Pro.** On Hobby, cron is once-daily at best, so **both sweeps silently never run** and abandoned holds are never released. | Already an open item in `HANDOFF.md`; now a hard prerequisite. |
-| 4 | **`NEXT_PUBLIC_SITE_URL` on Vercel** must be `https://tickets-km.vercel.app`. Locally it is `http://localhost:3000`. | Plan 05 builds the payment `return_url` from it — a wrong value **breaks four of the six demo flows**, and only in production. |
+| 1 | Stripe test account, country **PL** | ✅ `acct_1UBpQ6GVCpToPFr7`, `livemode: false` — verified against `GET /v1/account`, not the dashboard |
+| 2 | `STRIPE_PUBLISHABLE_KEY` / `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` in `.env` | ✅ all three present, prefixes match names, no placeholder |
+| 3 | Payment methods enabled in test mode | ✅ owner-reported (Card, BLIK, P24, Klarna, SEPA) — first actually exercised by Task 5 |
+| 4 | Stripe CLI | ✅ v1.50.10 in `~/.local/bin` |
+| 5 | **Vercel Pro** | ⬜ **still outstanding.** Blocks **Task 13 only.** On Hobby, cron is once-daily at best, so **both sweeps silently never run** and abandoned holds are never released. |
+| 6 | **`NEXT_PUBLIC_SITE_URL` on Vercel** must be `https://tickets-km.vercel.app`. Locally it is `http://localhost:3000`. | ⬜ Task 15. Plan 05 builds the payment `return_url` from it — a wrong value **breaks four of the six demo flows**, and only in production. |
 
-Tasks 0–4 (baseline, design-doc corrections, the migration) can run before any
-of this. Everything from Task 5 needs the keys.
+**All Stripe variables live in `.env`, not `.env.local`** (owner decision, 4 Sep
+2026). There is no `.env.local` in this repo; the plan's ten references to one
+were rewritten.
+
+Three traps found while doing this, all now in Plan 05's Findings log:
+
+- The keys arrived **misnamed and swapped** — `STRIPE_API_KEY` held the secret,
+  `STRIPE_SECRET_KEY` held the publishable. **Check the prefix, not the name.**
+- The **Stripe CLI is not in Ubuntu's apt repos**; `sudo apt install stripe`
+  fails. It is a binary drop or Stripe's own apt repo.
+- `stripe login` offers **sandbox or test mode**. A sandbox is a *separate
+  account* that also issues `sk_test_` keys, so choosing wrong is invisible in
+  the prefix and shows up only as every webhook failing signature verification.
+  `stripe config --list` → `account_id` is the check.
+
+Tasks 0–4 (baseline, design-doc corrections, the migration) never needed any of
+this. Everything from Task 5 needs the keys, which are now in place.
 
 ### Deployment fixed 4 Sep 2026
 

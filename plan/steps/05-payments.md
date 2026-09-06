@@ -117,6 +117,18 @@ plan assumed, what was actually true, and which task was corrected.
 | 4 Sep (critique) | Sweep-cutoff Global Constraint said SQL `now()`; Task 12 draft passed a JS Date. | Task 11 secondary sweep computes cutoffs as `now() - make_interval(...)` in SQL. |
 | 4 Sep (critique) | **5-minute crons require Vercel Pro**; Hobby silently rejects/downgrades. | Task 1 Step 7 confirms Pro; Task 13 states plainly what fails on Hobby. |
 | 4 Sep (critique) | Cross-refs drifted; `reclaimCapacityForOrder` was cited at `orders.ts:296` (actual `:305`); `maxNetworkRetries` default said 100 (actual 2); `crypto.randomBytes` prose vs `getRandomValues` code. | Corrected. Task 16 Step 4 greps all task-cross-refs from a shell script rather than trusting prose. |
+| **4 Sep (Task 0, MEASURED)** | **`pnpm` and `node` are not on the PATH of a non-interactive shell.** `~/.bashrc` returns at line 8 (`case $- in *i*) ;; *) return;;`), so nvm's exports at lines 119–121 and 147 never run. `~/.local/bin` is on PATH only because Ubuntu's `~/.profile` adds it — which is why the Stripe CLI check passed and misled. Every agent-run gate died with `pnpm: command not found` (exit 127). | **Prefix every Bash tool call:** `export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"`. Recorded in `/CLAUDE.md` Traps. |
+| **4 Sep (Task 0, MEASURED)** | Task 0 Step 1 expected branch `feat/plan-04-inventory`; Plan 04 is merged and deleted, and the tree was on `development`. | Cut `feat/plan-05-payments` off `development` per `/CLAUDE.md` branching. Step 1 corrected. |
+| **4 Sep (Task 0, MEASURED)** | Task 0 Step 2 expected `10 concerts`; the seed emits **11**. | Step 2 expectation corrected. Cosmetic — no task depends on the count. |
+| **5 Sep (Task 10, REVIEW — plan claim was false)** | Task 10's "Concurrent-dispatch note" claimed the row lock "bounds parallelism to exactly one dispatch per event id at a time." **Untrue.** The lock is released when the ledger tx commits, which happens *before* dispatch begins, so a second delivery that was blocked on `FOR UPDATE` reads `processedAt` still `NULL` and dispatches concurrently with the first. The note conflated serialising the *ledger write* with serialising the *dispatch*. | Note rewritten with the interleaving traced step by step. Releasing the lock before dispatch stays (holding one across a Stripe call is a recorded blocker). Documented that safety comes from **`fulfilOrder`'s idempotency** — the loser's `WHERE status IN ('PENDING')` returns zero rows, throws, and rolls back the whole tx including the `heldCount → soldCount` move — **not** from the lock. Delivery is **at-least-once with idempotent fulfilment**; anything added to `dispatchWebhookEvent` must be idempotent on its own terms. |
+| **4 Sep (Task 0, MEASURED — pre-existing defect)** | **The baseline gate failed: `verify-holds.test.ts > corrects drift with --fix` timed out at 5000ms.** Not a Plan 04 regression and nothing to do with Plan 05. `runVerify()` spawns `pnpm exec tsx`, **measured at 2.56–2.66s**; that test spawns it **twice** (lines 80 and 89) for ~5.2s against Vitest's **5000ms default `testTimeout`**. `vitest.config.mts` raises only `hookTimeout: 30_000`. The file **passes in isolation (15.67s) and fails in the full suite** — the signature of a marginal timeout, not a logic bug. `tests/scripts/reset-admin-password.test.ts:24-28` had already diagnosed this exact defect, fixed itself with `SPAWN_TIMEOUT = 30_000`, and predicted this: *"one slow run away from failing regardless of the code under test."* The generalisation to the other CLI-spawning file was never made. | Applied the same `SPAWN_TIMEOUT = 30_000` to all three tests in `verify-holds.test.ts`. **Deliberately not raised globally** in `vitest.config.mts` — a blanket `testTimeout` would mask genuine hangs across 290 tests; per-test timeouts are this repo's existing idiom (`}, 180_000)` in `oversell.test.ts` and `sweep-holds.test.ts`). |
+| **4 Sep (Task 2, MEASURED — plan gap)** | **Task 2 extends `.env.test` and `.env.example` but never `.env`, leaving local dev unbootable.** The new schema requires `CRON_SECRET` (`min(32)`, **no default**), and `.env` had no such key — `pnpm dev` would have died with `Invalid environment configuration: CRON_SECRET`. The three `STRIPE_*` vars were already present from Task 1, so `CRON_SECRET` was the only gap, and nothing in the plan would have caught it: `.env` is git-ignored, so no test or gate reads it. | Generated into `.env` (48 chars, value never printed). Task 2 gains a step to sync `.env` alongside `.env.test`/`.env.example`. Vercel's `CRON_SECRET` must be a **different** value — Task 15 already says so. |
+| **4 Sep (Task 3, VERIFIED independently)** | **Every `prisma migrate dev` emits `DROP INDEX "OrderItem_ticketTypeId_orderId_idx"`.** It is a covering index (`INCLUDE ("orderId")`) created deliberately by Plan 04 migration `20260902185821` to serve the same-buyer dedupe; Prisma's schema language cannot represent `INCLUDE`, so it reads as permanent drift. Confirmed against **both** `km_dev` and `km_test` with `migrate diff` — one `DROP INDEX`, nothing else. Applying it would silently remove the index. | The DROP was stripped from the Plan 05 migration (survives only as a comment). **Promoted to `/CLAUDE.md` Traps** — it recurs on every future migration, not just this one. Also recorded there: `migrate diff --from-schema-datasource` was **removed in Prisma 7**; it is `--from-config-datasource`. |
+| **4 Sep (Task 1, MEASURED)** | Task 1 said `.env.local`; the repo has no such file and every other local variable lives in `.env`. | Owner decision: **all Stripe vars stay in `.env`**. All ten `.env.local` references across Tasks 1, 15 and the DoD rewritten to `.env`. |
+| **4 Sep (Task 1, MEASURED)** | Keys arrived **misnamed and swapped**: `STRIPE_API_KEY` held `sk_test_`, `STRIPE_SECRET_KEY` held `pk_test_`. Prefix and name disagreed, so the name alone proved nothing. | Renamed. Task 1 Step 2 now says to verify the **prefix**, not the name. `grep -oE '^STRIPE_[A-Z_]+=(pk_test\|sk_test\|whsec)?' .env` is the non-leaking check. |
+| **4 Sep (Task 1, MEASURED)** | Stripe CLI is **not in Ubuntu apt repos** — `sudo apt install stripe` fails; it needs Stripe's own repo or a binary drop. | Task 1 Step 5 carries the binary install (`~/.local/bin`, v1.50.10 installed 4 Sep). |
+| **4 Sep (Task 1)** | `stripe login` now offers **sandbox vs test mode**. A sandbox is a separate account that *also* issues `sk_test_` keys, so a mismatch is invisible in the prefix and surfaces only as universal webhook signature failure. | Task 1 Step 5 mandates test mode and adds `stripe config --list` → `account_id` must equal `acct_1UBpQ6GVCpToPFr7`. |
+| **4 Sep (Task 1, VERIFIED)** | Account country was an open owner question. `GET /v1/account` → `acct_1UBpQ6GVCpToPFr7`, `country: PL`, `livemode: false`. | BLIK/P24 country gate satisfied for the demo. **Klarna on a real PL entity remains unverified** — a test account offering it proves nothing. |
 | **4 Sep (critique, VERIFIED)** | **`pi.charges` does not exist in `stripe@19.3.1`.** `types/PaymentIntents.d.ts:129` has `latest_charge: string \| Stripe.Charge \| null`. The plan's `extractPaymentMethodType` + SEPA prose read `pi.charges?.data?.[0]?.payment_method_details?.type` — a `tsc` error. | Task 8 rewrites `extractPaymentMethodType` to use `pi.latest_charge` (expanded on retrieve) OR the single-element case of `pi.payment_method_types`. Task 5's SEPA prose says the same. |
 | **4 Sep (critique)** | **SEPA guardrail was dead code.** `extractPaymentMethodType` returned `null` for every non-`succeeded` event → `Order.paymentMethodType` never `'sepa_debit'` → cap query counted 0 forever → secondary sweep's SEPA branch never matched. | Task 8 sets `paymentMethodType` on the **first** webhook of ANY type. Task 5's cap query counts all `paymentIntentStatus IN ('processing','requires_action','requires_capture','requires_confirmation')` — the in-flight population, not just `processing`. Task 5 guards `if capacity * share < 1: allow SEPA unconditionally` so small concerts do not disable SEPA at count 0. |
 | **4 Sep (critique)** | **`paymentIntentStatus` never written at PI creation** → primary sweep NULL-mishandling: `{notIn:[…]}` in Prisma emits `WHERE col NOT IN ($1)` with no `OR IS NULL`, so `NULL NOT IN (…)` is UNKNOWN → **sweep matches nothing**, reproducing the exact Plan 04 bug. Written as raw SQL with `OR IS NULL`, a buyer mid-3DS gets swept. | Task 6 writes `paymentIntentStatus = 'requires_confirmation'` in the SAME claim UPDATE as `stripePaymentIntentId`. Task 11 predicate expressed as raw SQL: `(paymentIntentStatus IS NULL OR paymentIntentStatus NOT IN (...))`. Task 12 adds `extendHoldAction` — Pay-click extends `holdExpiresAt` by `PAY_CLICK_HOLD_EXTENSION_MS` (default 15 min) so mid-payment orders are never swept. |
@@ -133,6 +145,30 @@ plan assumed, what was actually true, and which task was corrected.
 | **4 Sep (owner decision, VERIFIED)** | **The owner has decided: no PI cancellation on expiry.** Abandoned card checkout cannot charge — cancelling is hygiene, not safety. This deletes Task 11's primitive, the `expiringLockedAt` column, and most of the reconciliation cron. The reclaim-or-refund path graduates to the primary safety net. | Documented in `00-decisions.md` under a new heading (Task 4 Step 3). Task 11 keeps `expireOrderWith`'s Plan 04 `beforeRelease` hook (unused by Plan 05; a future plan may need it). Design docs corrected (Task 4). Task 7 (refund path) is what the entire safety story now rests on. |
 | **4 Sep (executor to verify)** | Does Stripe automatically cancel abandoned PaymentIntents, and after how long? | Task 4 Step 3 asks the executor to read `node_modules/stripe/types/PaymentIntents.d.ts` and Stripe's docs, then record the answer in `00-decisions.md`. If yes, the hygiene argument for explicit cancellation disappears entirely; if no, explicit cancellation is a plan-06 clean-up item, not a plan-05 blocker. **The plan does not depend on the answer** — no `cancel` call runs from expiry. |
 | **4 Sep (critique)** | Negative controls that could not fail: Task 10 raw-body (fixed point), Task 6 concurrent-create (same id from both writes), Task 12 JS-clock (local test can't distinguish), Task 13 Pay-click-gate (no DOM). Also: Task 5 SEPA env-override (env parsed at import, needs `vi.resetModules`); Task 7 ABBA (intermittent); Task 11 slow-Stripe (needs testTimeout above 30s). | Each is either rewritten to be deterministic, replaced by a spy-on-query check (Task 6), or dropped from the count with an explicit "cannot distinguish here" note (Task 11 SQL-vs-JS clock, Task 12 Pay-click). Following Plan 04's precedent with the pool-tuning smoke test. |
+
+| **4 Sep (Task 2, MEASURED)** | Plan said "nine new cases" in the env-schema test file. Actual written: 8 (accept keys, reject missing pk, reject missing sk, reject placeholder, reject live keys, defaults for six numeric vars, SEPA bounds, CRON min-length). The step-3 run showed 7 failing (the "accept keys" test passed trivially with the old schema). The gate reports 298 tests = 290 + 8. | Count corrected in plan Steps 3 and 6. No test logic changed — all 13 cases are correct and cover every stated requirement. |
+| **4 Sep (Task 2, MEASURED)** | Task 2 Step 4 schema snippet used chained `.object({}).superRefine()` — valid in Zod 4. No surprises; compiled and passed immediately. | No action needed. |
+| **4 Sep (Task 3, MEASURED)** | `prisma migrate dev --create-only` no longer hangs in non-interactive shells — Prisma 7 now fails immediately with "non-interactive environment is not supported". Plan 04's finding said it would hang after writing the file. | Used `echo "y" \| script -q -c "..."` to provide a pseudo-TTY. File was created. Step 2 note updated. |
+| **4 Sep (Task 3, MEASURED)** | `migrate dev --create-only` included `DROP INDEX "OrderItem_ticketTypeId_orderId_idx"` in the generated SQL. That index was created in Plan 04's migration with `INCLUDE ("orderId")` — a PostgreSQL covering-index feature Prisma's schema language cannot represent. Prisma sees it as drift and tries to drop it on every `migrate dev`. | Removed the `DROP INDEX` line from the migration SQL and replaced it with an explanatory comment. The covering index is preserved in the database. Every future `migrate dev` will repeat this line; each must be removed manually the same way. |
+
+| **4 Sep (Task 5, MEASURED)** | Plan's `withEnv` helper for env-override controls was intended for negative controls in Step 6 (mutating `SEPA_HOLD_CAP_SHARE`). The negative controls were all exercisable by mutating DB state instead (10 in-flight SEPA orders for cap, 85 soldCount for near-sellout, 5-seat concert for floor guard, `requires_confirmation` status for in-flight list). No env-module-reset was needed in the positive test cases. | Step 6 negative controls ran without `withEnv`. All four confirmed. |
+| **4 Sep (Task 5, MEASURED)** | The stripe wrapper test split the plan's two-assertion `it('lowercases currency', ...)` into two separate `it` blocks for cleaner failure attribution. | Cosmetic only; 6 tests instead of 5 for stripe.test.ts. |
+| **4 Sep (Task 6, MEASURED)** | Plan's case 10 mocked `stripeAmount: (o) => o.total` — that implementation never throws for zero totals. Test for zero-amount refusal needed `mockStripeAmount` as a hoisted `vi.fn()` so `mockImplementationOnce(() => { throw ... })` could override it per-test. | `mockStripeAmount` added to hoisted factory; case 10 uses `mockImplementationOnce`. |
+| **4 Sep (Task 6, MEASURED)** | Plan added 11 cases + 1 error-class test = 12 total. Plan's table listed 11. | 12 tests written and passing. |
+| **4 Sep (Task 6, MEASURED)** | Negative control 3 (IDEMPOTENCY_RETRY_LIMIT = 0) broke not just case 4 but all create-calling tests because the for loop never ran and immediately threw. This is a stronger confirmation of the retry logic than expected — proving the loop body is unconditionally required, not just for the 409 path. | Recorded. |
+
+| **4 Sep (Task 7, MEASURED)** | **`result.needsRefund` has a TypeScript `undefined` in the union** — Prisma `$transaction`'s return-type inference doesn't narrow discriminated unions cleanly; after `'needsRefund' in result`, TypeScript still inferred `result.needsRefund` as `... | undefined`. | Added `!` non-null assertion: `result.needsRefund!`. Type is guaranteed by the `in` guard; the assertion is sound. |
+| **4 Sep (Task 7, MEASURED)** | `EventNoLongerPurchasableError` imported in test file but never used directly in any assertion — only referenced in a comment. | Removed from the import. |
+| **4 Sep (Task 7, MEASURED)** | NC3 (event.status guard): removing the guard did NOT produce a clean "event proceeded after cancel" failure. Instead `holdCapacity` itself threw `InsufficientCapacityError` (capacity=0 on a cancelled event with 0 seats), so the result was `oversoldOnLateSuccess` not `eventCancelledOnLateSuccess`. The guard is still essential — without it the buyer gets an `oversold` refund reason instead of the correct `eventCancelled` reason, and any event with remaining capacity would issue tickets. | Recorded. The negative control confirms the guard is load-bearing for correct reason attribution; a high-capacity CANCELLED event would have issued tickets without it. |
+| **4 Sep (Task 7, MEASURED)** | ABBA negative control via a standalone `tsx` script was infeasible (tsx compiles to CJS, no top-level await). Added a temporary `describe('ABBA proof')` block in the test file using two `PrismaClient` instances (max:1 each) with sleep-based interleaving to create a deterministic deadlock; confirmed 40P01 Prisma error with `P2010 raw query failed`; removed after verification. | Not left as a permanent test — it proves the wrong-lock-order case, not the production code path. |
+
+| **5 Sep (Task 11, MEASURED)** | `type Row = ...` declared inside a `for(;;)` block and referenced in `$queryRawUnsafe<Row[]>(...)` produced TS7022 "implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer." Moving the type to module scope did not resolve it; the root cause is that TypeScript cannot infer the generic `T` on `$queryRawUnsafe<T>` when `client` is `PrismaClient \| Prisma.TransactionClient` (union type). | Used `as` type assertions instead of generic parameters: `(await client.$queryRawUnsafe(...)) as PrimaryRow[]`. Consistent with how other raw-query returns are annotated in this codebase. |
+| **5 Sep (Task 11, MEASURED)** | NC3 (head-of-line keyset): the plan said "use OFFSET/LIMIT; a failing order stays at page position 0 and blocks the tick." With `offset += candidates.length` the spin does not manifest (offset always advances past all candidates). Spin only appears when the loop re-queries from position 0 with no offset or cursor. | NC3 demonstrated using take=2 and no cursor (pure re-query from position 0). With 3 orders (early, mid-fail, late), mid re-appeared on page 2 producing `failed=3` instead of expected `failed=1`. Case 5 confirmed failed. Plan note updated. |
+| **5 Sep (Task 11, MEASURED)** | Task 11 Step 5 (events.ts): code already correct from Plan 04 — `tx.event.update` sets `status: CANCELLED` before the `if (cancelling)` order-release block. No code change required; existing `events.test.ts` tests verified unchanged (12 pass). | No action beyond verification. |
+
+| **5 Sep (Task 12, MEASURED)** | Plan's `extendHoldAction` snippet used `piReuse${e.reason}` — but `PaymentIntentReuseError` in `payment-intent.ts` has only a `message` property, not `reason`. `e.reason` is `undefined`, so the key was `piReuseundefined`. Additionally, `e.message` is lowercase-first (`'alreadyPaid'`, `'notPending'`), so a direct concatenation produced `piReusealreadyPaid` / `piReusenotPending` — neither exists in the message catalogue. | Action capitalises the first letter: `e.message.charAt(0).toUpperCase() + e.message.slice(1)` → `'AlreadyPaid'` / `'NotPending'` → keys `piReuseAlreadyPaid` / `piReuseNotPending` matching the catalogue exactly. Step 2 snippet corrected (uses `e.message` with capitalisation). |
+| **5 Sep (Task 12, MEASURED)** | `holdExpiresAt` extension test initially asserted `after.holdExpiresAt > before.holdExpiresAt` with a freshly created order (holdExpiresAt = now+30 min). `PAY_CLICK_HOLD_EXTENSION_MS` defaults to 15 min, so `newExpiresAt < holdExpiresAt` and the SQL `WHERE holdExpiresAt < $1` condition was false — no row updated, before and after were identical, test failed. | Test sets `holdExpiresAt = now + 60s` (near-expiry) before calling the action so the 15-minute extension fires. Assertion changed to `after.holdExpiresAt?.getTime() > nearExpiry.getTime()`. |
+| **5 Sep (Task 13–14, MEASURED — UNRESOLVED, do not treat as closed)** | Five `sweep-holds.test.ts` tests failed with **P2025** ("record required but not found") on a full-suite run, and passed on a re-run. An earlier version of this row concluded "pre-existing, no action required" — **that conclusion was not supported by evidence.** The failures appeared *after* the Task 12–14 files landed, which is equally consistent with the new files perturbing shared state. `reconcile.test.ts` is the only file in the suite that mutates **global sequence state** (`ALTER SEQUENCE "order_reference_seq" RESTART`), which no later `TRUNCATE` undoes — a plausible mechanism, though P2025 points at a missing row rather than a duplicate reference, so it does not obviously fit. | **Reproduction attempted and failed to trigger it.** `km_test` reset to empty (`migrate reset --force --skip-seed`, no seed configured) then `pnpm test` run **once** — exactly what CI does with its fresh Postgres service container. Result: **45 files, 403/403, exit 0.** What this establishes: there is **no deterministic ordering bug reachable from a cold database in a single pass**, so **CI should not go red** — CI always starts cold. What it does **not** establish: the trigger is still unknown, and reproducing it evidently requires a *warm* database in some particular state, which is how the executor hit it. **Root cause NOT identified.** If it recurs, capture the failing run's full output before re-running — a second run destroys the evidence, which is why this is still open. |
 
 *(Executors: append rows here in the same turn a discovery is made, not at the end of the task.)*
 
@@ -283,15 +319,30 @@ surface (verified `types/PaymentIntents.d.ts:129`, no `pi.charges`).
 
 Verify Plan 04's landing state before touching anything.
 
-- [ ] **Step 1: Clean tree, on the payments branch**
+> **Every command in this plan needs Node on the PATH.** `~/.bashrc` returns
+> early for non-interactive shells, so nvm never runs and `pnpm` is not found
+> (exit 127). Prefix each shell session:
+>
+> ```bash
+> export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"
+> ```
+
+- [x] **Step 1: Clean tree, on the payments branch**
 
 ```bash
 git status && git branch --show-current
 ```
 
-Expected: clean; branch `feat/plan-04-inventory` (Plan 05 cuts at Task 16).
+Plan 04 is merged and its branch deleted, so this cuts from `development`:
 
-- [ ] **Step 2: Docker Postgres up, migrations applied, seed**
+```bash
+git checkout -b feat/plan-05-payments
+```
+
+**Done 4 Sep 2026.** Branch `feat/plan-05-payments`; the only uncommitted
+files are this plan and the three status docs.
+
+- [x] **Step 2: Docker Postgres up, migrations applied, seed**
 
 ```bash
 docker compose up -d
@@ -299,9 +350,13 @@ pnpm exec dotenv -e .env -- prisma migrate deploy
 pnpm db:seed
 ```
 
-Expected: `Seeded 2 venues, 10 concerts, 2 admin accounts.` + `Orders in database: N.`
+Expected: `Seeded 2 venues, 11 concerts, 2 admin accounts.` + `Orders in database: N.`
 
-- [ ] **Step 3: Clean-tree gate green as Plan 04 landed**
+**Done 4 Sep 2026:** `km-postgres-1` running, 4 migrations already applied
+(none pending), `Seeded 2 venues, 11 concerts, 2 admin accounts. Orders in
+database: 2.`
+
+- [x] **Step 3: Clean-tree gate green as Plan 04 landed**
 
 ```bash
 rm -rf .next next-env.d.ts tsconfig.tsbuildinfo
@@ -310,7 +365,15 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 
 Expected: pass. `Test Files 34 … Tests 290 …`.
 
-- [ ] **Step 4: Sweep and reconcile**
+**Failed on the first attempt, 4 Sep 2026** — `verify-holds.test.ts` timed
+out at 5000ms. A **pre-existing marginal timeout**, not a Plan 04 regression:
+see the Findings entry. Fixed by applying `SPAWN_TIMEOUT = 30_000` to that
+file, matching `reset-admin-password.test.ts`.
+
+**Green on re-run:** `Test Files 34 passed (34)`, `Tests 290 passed (290)`,
+`✓ Compiled successfully in 18.9s`, exit 0.
+
+- [x] **Step 4: Sweep and reconcile**
 
 ```bash
 pnpm holds:sweep
@@ -319,9 +382,12 @@ pnpm holds:verify
 
 Expected: first run some non-zero counts, second `{"expired":0,"released":0}`. Drift 0.
 
-- [ ] **Per-task verification gate**
+**Done 4 Sep 2026:** 1st `{"expired":1,"released":5}`, 2nd
+`{"expired":0,"released":0}`, `OK: 11 ticket types, no drift`, exit 0.
 
-Observational only.
+- [x] **Per-task verification gate**
+
+Observational only. **Task 0 complete.**
 
 ---
 
@@ -332,14 +398,24 @@ Vercel Pro.
 
 **Secrets never enter a transcript.**
 
-- [ ] **Step 1: Owner — create test-mode Stripe account, country PL**
+> **All Stripe variables live in `.env`, not `.env.local`** — owner decision,
+> 4 Sep 2026. They sit alongside `DATABASE_URL` and the rest of local config;
+> there is no `.env.local` in this repo. Both are git-ignored and both are
+> loaded by Next, so this is a tidiness choice, not a functional one. Every
+> command in this plan targets `.env` accordingly.
+
+- [x] **Step 1: Owner — create test-mode Stripe account, country PL**
 
 Dashboard registration; test mode; skip business verification. BLIK/P24
 gated on account country.
 
-- [ ] **Step 2: Owner — copy publishable + secret keys into `.env.local`**
+**Done 4 Sep 2026.** Verified against the live API rather than the dashboard:
+`GET /v1/account` returns `acct_1UBpQ6GVCpToPFr7`, `country: PL`,
+`livemode: false`.
 
-Dashboard → Developers → API keys (test mode). `.env.local` git-ignored.
+- [x] **Step 2: Owner — copy publishable + secret keys into `.env`**
+
+Dashboard → Developers → API keys (test mode). `.env` git-ignored.
 Never paste into a chat.
 
 ```
@@ -348,41 +424,75 @@ STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_placeholder_replace_after_stripe_listen
 ```
 
-- [ ] **Step 3: Owner — enable payment methods** in dashboard test mode:
+**Done 4 Sep 2026, after a correction.** The keys arrived under the wrong
+names *and swapped*: `STRIPE_API_KEY` held the `sk_test_` value and
+`STRIPE_SECRET_KEY` held the `pk_test_` one. Renamed; prefixes now match
+names. Check the prefix, not just the name — a publishable key sitting in
+`STRIPE_SECRET_KEY` fails every server-side call with an opaque auth error.
+
+- [x] **Step 3: Owner — enable payment methods** in dashboard test mode:
   Card, BLIK, Przelewy24, Klarna, SEPA Direct Debit.
 
-- [ ] **Step 4: Confirm file shape**
+**Done 4 Sep 2026** (owner-reported; not independently verified — Task 5's
+allowed-methods computation and Task 16's demo flows are what actually
+exercise them).
+
+- [x] **Step 4: Confirm file shape**
 
 ```bash
-test -f .env.local && grep -c '^STRIPE_' .env.local
+test -f .env && grep -c '^STRIPE_' .env
 ```
 
-Expected: `3`. Do not `cat` the file.
+Expected: `3`. Do not `cat` the file. **Measured 4 Sep 2026: `3`.**
 
-- [ ] **Step 5: Owner — Stripe CLI and `stripe listen`**
+- [x] **Step 5: Owner — Stripe CLI and `stripe listen`**
+
+The CLI is **not** in Ubuntu's apt repositories — `sudo apt install stripe`
+fails. Installed 4 Sep 2026 as a binary into `~/.local/bin` (already on
+`PATH` via `.bashrc`), version 1.50.10:
+
+```bash
+VER=$(curl -sSL https://api.github.com/repos/stripe/stripe-cli/releases/latest \
+  | grep -oP '"tag_name":\s*"v\K[^"]+')
+curl -sSL "https://github.com/stripe/stripe-cli/releases/download/v${VER}/stripe_${VER}_linux_x86_64.tar.gz" \
+  | tar -xz -C "$HOME/.local/bin" stripe
+```
 
 ```bash
 stripe login
+stripe config --list    # account_id MUST be acct_1UBpQ6GVCpToPFr7
 stripe listen --forward-to localhost:3000/api/webhooks/stripe
 ```
 
-Copy printed `whsec_...` into `.env.local`.
+At `stripe login`, choose **test mode, not sandbox.** A sandbox is a
+*separate account* that also issues `sk_test_` keys, so the mismatch is
+invisible in the key prefix — but `stripe listen` would then print a
+`whsec_` for an account the app's keys do not belong to, and every webhook
+would fail signature verification with no clue why. `stripe config --list`
+is the check.
 
-- [ ] **Step 6: Placeholder gone**
+`/api/webhooks/stripe` does not exist until Task 10; `stripe listen` still
+prints the secret, and forwarded events 404 until then. That is expected.
+
+Copy printed `whsec_...` into `.env`.
+
+- [x] **Step 6: Placeholder gone**
 
 ```bash
-grep -q '^STRIPE_WEBHOOK_SECRET=whsec_' .env.local && \
-  ! grep -q 'whsec_placeholder' .env.local && echo ok
+grep -q '^STRIPE_WEBHOOK_SECRET=whsec_' .env && \
+  ! grep -q 'whsec_placeholder' .env && echo ok
 ```
 
-Expected: `ok`.
+Expected: `ok`. **Measured 4 Sep 2026: `ok`.**
 
-- [ ] **Step 7: Vercel Pro active**
+- [x] **Step 7: Vercel Pro active**
 
 Vercel dashboard → project → Settings → Plan. Confirm "Pro".
 
 5-minute crons and `maxDuration > 10s` are Pro-only; Hobby silently
 rejects/downgrades and both sweeps become inert.
+
+**Done 4 Sep 2026** (owner-reported). **Task 1 is complete.**
 
 - [ ] **Per-task verification gate**
 
@@ -395,7 +505,7 @@ None; downstream tasks fail loudly.
 **Files:** `package.json`, `src/lib/server/env-schema.ts`,
 `tests/lib/server/env-schema.test.ts`, `.env.test`, `.env.example`.
 
-- [ ] **Step 1: Install pinned versions**
+- [x] **Step 1: Install pinned versions**
 
 ```bash
 pnpm add stripe@19.3.1 @stripe/stripe-js@5.7.0 @stripe/react-stripe-js@3.4.0
@@ -412,7 +522,9 @@ grep '"stripe"\|@stripe/' package.json
 
 Expected: three dependency lines pinned as above.
 
-- [ ] **Step 2: Extend `.env.test` — this step matters most**
+**Done 4 Sep 2026:** `"@stripe/react-stripe-js": "3.4.0"`, `"@stripe/stripe-js": "5.7.0"`, `"stripe": "19.3.1"` in `package.json`.
+
+- [x] **Step 2: Extend `.env.test` — this step matters most**
 
 MEASURED: without this, ~290 db-importing tests fail at import in Step 6.
 Do BEFORE Step 4's schema change.
@@ -434,7 +546,9 @@ WEBHOOK_MAX_ATTEMPTS=8
 
 These never reach real Stripe — every test mocks the SDK.
 
-- [ ] **Step 3: Env-schema tests first**
+**Done 4 Sep 2026:** Appended 10 vars to `.env.test`. All 290 tests continued to pass.
+
+- [x] **Step 3: Env-schema tests first**
 
 Extend `tests/lib/server/env-schema.test.ts`; extend the `valid` fixture
 so existing cases pass; add new cases (accept keys; reject missing;
@@ -450,6 +564,8 @@ pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/env-schema.test.ts
 ```
 
 Expected: new cases fail; existing pass.
+
+**Done 4 Sep 2026:** 7 new cases failed, 6 existing passed (13 total). See Findings log — actual count is 8 new test methods, not 9.
 
 - [ ] **Step 4: Extend the schema**
 
@@ -511,12 +627,30 @@ pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/env-schema.test.ts
 
 Expected: pass.
 
-- [ ] **Step 5: `.env.example`**
+**Done 4 Sep 2026:** All 13 tests pass (5 existing + 8 new).
+
+- [x] **Step 4b: Sync `.env` — the step the plan originally missed**
+
+`.env` is git-ignored, so no gate reads it and nothing else here would catch
+a missing key until `pnpm dev` refuses to boot. `CRON_SECRET` has **no
+default**; the three `STRIPE_*` vars arrive with Task 1.
+
+```bash
+grep -q '^CRON_SECRET=' .env || \
+  printf '\nCRON_SECRET=%s\n' "$(openssl rand -base64 36 | tr -d '\n/+=' | head -c 48)" >> .env
+```
+
+Never print the value. Vercel's `CRON_SECRET` must be a **different** one
+(Task 15). **Done 4 Sep 2026**, 48 chars.
+
+- [x] **Step 5: `.env.example`**
 
 Add exact keys and shapes (no real values). Verify with `diff` against
 the sorted expected list.
 
-- [ ] **Step 6: Full suite still green — the Task 2 gate**
+**Done 4 Sep 2026:** Added all 10 new vars to `.env.example`.
+
+- [x] **Step 6: Full suite still green — the Task 2 gate**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run
@@ -526,11 +660,15 @@ Expected: all 290 existing + 9 new pass. If a db-importing test file
 fails at import with `Invalid environment configuration:`, `.env.test`
 is missing a var Step 2 was supposed to add.
 
-- [ ] **Per-task verification gate**
+**Done 4 Sep 2026:** `Test Files 34 passed (34), Tests 298 passed (298)` (290 existing + 8 new). Expected was 9 new; actual is 8 — see Findings log.
+
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm exec dotenv -e .env.test -- vitest run
 ```
+
+**Done 4 Sep 2026:** typecheck green, lint clean, 298 tests pass. Exit 0.
 
 ---
 
@@ -539,7 +677,7 @@ pnpm typecheck && pnpm lint && pnpm exec dotenv -e .env.test -- vitest run
 **Files:** `prisma/schema.prisma`, `prisma/migrations/<TS>_plan_05_pi_state/migration.sql`,
 `tests/prisma/schema.test.ts`.
 
-- [ ] **Step 1: Extend `Order` and `StripeWebhookEvent`**
+- [x] **Step 1: Extend `Order` and `StripeWebhookEvent`**
 
 ```prisma
 model Order {
@@ -587,7 +725,7 @@ so the sweep can range-scan `holdExpiresAt` for `status = 'PENDING'`;
 paymentIntentStatus, holdExpiresAt]` (a `NOT IN` on col 2 followed by a
 range on col 3) prevents the range scan — recorded in Findings.
 
-- [ ] **Step 2: Generate the migration**
+- [x] **Step 2: Generate the migration**
 
 ```bash
 pnpm exec dotenv -e .env -- prisma migrate dev --create-only --name plan_05_pi_state
@@ -597,7 +735,16 @@ Hangs after applying in non-interactive shells (Plan 04 Task 2 finding).
 Kill after the file appears. Inspect: pure `ALTER TABLE ADD COLUMN`
 (nullable) + two indexes. Delete any `DEFAULT` Prisma emits.
 
-- [ ] **Step 3: Apply and confirm**
+**Done 4 Sep 2026:** Prisma 7 in non-interactive mode now refuses immediately
+with "non-interactive environment is not supported" instead of hanging. Used
+`echo "y" | script -q -c "..."` to provide a pseudo-TTY — see Findings log.
+File created at `prisma/migrations/20260904081129_plan_05_pi_state/migration.sql`.
+Prisma also emitted `DROP INDEX "OrderItem_ticketTypeId_orderId_idx"` (Plan 04's
+`INCLUDE`-index drift); removed that line and added an explanatory comment —
+see Findings log. `StripeWebhookEvent` columns correctly carry `DEFAULT 0` and
+`DEFAULT false`; no deletions needed there.
+
+- [x] **Step 3: Apply and confirm**
 
 ```bash
 pnpm exec dotenv -e .env -- prisma migrate deploy
@@ -607,7 +754,9 @@ pnpm exec dotenv -e .env -- prisma generate
 
 Expected: `Database schema is up to date!`. Client regenerated.
 
-- [ ] **Step 4: Schema test**
+**Done 4 Sep 2026:** Applied to km_dev: `Database schema is up to date!`. Applied to km_test via `dotenv -e .env.test`. Client regenerated.
+
+- [x] **Step 4: Schema test**
 
 Extend `tests/prisma/schema.test.ts`:
 
@@ -642,11 +791,30 @@ pnpm exec dotenv -e .env.test -- vitest run tests/prisma/schema.test.ts
 
 Expected: pass.
 
-- [ ] **Per-task verification gate**
+**Done 4 Sep 2026:** Applied km_test migration then ran schema test — `Tests 7 passed (7)`.
+
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm exec dotenv -e .env.test -- vitest run tests/prisma
 ```
+
+**Done 4 Sep 2026:** typecheck green, lint clean, `Test Files 2 passed (2), Tests 14 passed (14)`. Exit 0.
+
+**Full clean-tree gate after Tasks 2+3 — the number that matters:**
+
+```bash
+rm -rf .next next-env.d.ts tsconfig.tsbuildinfo
+pnpm typecheck && pnpm lint && pnpm test && pnpm build
+```
+
+`Test Files 34 passed (34)`, **`Tests 300 passed (300)`**,
+`✓ Compiled successfully in 19.2s`, exit 0.
+
+**300, not 298.** Task 2's gate recorded 298 (290 + 8 env-schema) and was
+right at that moment; Task 3 then added 2 schema-column tests. Task 3's own
+gate runs only `tests/prisma`, so nothing in the plan ever printed the
+combined figure — carry **300** forward as the Plan 05 baseline.
 
 ---
 
@@ -654,7 +822,7 @@ pnpm typecheck && pnpm lint && pnpm exec dotenv -e .env.test -- vitest run tests
 
 **Files:** `plan/03-purchase-flow.md`, `plan/00-decisions.md`, `HANDOFF.md`.
 
-- [ ] **Step 1: Sweep responsibilities and safety net**
+- [x] **Step 1: Sweep responsibilities and safety net**
 
 `03-purchase-flow.md` § "Lifecycle of held capacity": update Plan 04/05/06
 split. **Delete** the mandate to cancel PI before releasing. Replace with:
@@ -677,13 +845,13 @@ Rewrite § "The oversell race, handled explicitly" to name the exact
 seams. **Delete** the "nastiest bug in the system" framing about
 release-before-cancel — it presumed the wrong safety model.
 
-- [ ] **Step 2: Payment method allow-list**
+- [x] **Step 2: Payment method allow-list**
 
 § "The checkout submission" step 8: replace `automatic_payment_methods`
 with `payment_method_types` computed server-side per order. Reference the
 SEPA guardrail section of this plan.
 
-- [ ] **Step 3: Record the owner decision AND async policy AND alerting AND Stripe auto-cancel research**
+- [x] **Step 3: Record the owner decision AND async policy AND alerting AND Stripe auto-cancel research**
 
 Append to `plan/00-decisions.md` under a new heading **"Hold expiry does
 not call Stripe"**:
@@ -717,24 +885,26 @@ Append **"SEPA Direct Debit enabled with server-side guardrails (4 Sep
 Append **"Payments — operational alerting (stopgap, 4 Sep 2026)"**:
 stderr-grep mechanism, unmonitored beyond that until Plan 07.
 
-- [ ] **Step 4: `HANDOFF.md` operations**
+- [x] **Step 4: `HANDOFF.md` operations**
 
 Add subsection "Operations — payments" describing exactly how to spot
 ALERTs (grep Vercel logs) and where the reconciliation cron runs.
 
-- [ ] **Step 5: Verify parity test**
+- [x] **Step 5: Verify parity test**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/i18n tests/lib/shared
 ```
 
-Expected: pass.
+Expected: pass. **Done 4 Sep 2026: `Test Files 7 passed (7), Tests 70 passed (70)`.**
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint
 ```
+
+**Done 4 Sep 2026: typecheck green (types generated, tsc --noEmit clean), lint clean. Exit 0.**
 
 ---
 
@@ -743,7 +913,7 @@ pnpm typecheck && pnpm lint
 **Files:** `src/lib/server/stripe.ts`, `src/lib/server/payment-methods.ts`,
 `tests/lib/server/stripe.test.ts`, `tests/lib/server/payment-methods.test.ts`.
 
-- [ ] **Step 1: Wrapper tests first — no `require`, no network**
+- [x] **Step 1: Wrapper tests first — no `require`, no network**
 
 ```ts
 import { describe, expect, it } from 'vitest'
@@ -764,7 +934,7 @@ describe('stripe wrapper', () => {
 
 Run and fail.
 
-- [ ] **Step 2: Implement `stripe.ts`**
+- [x] **Step 2: Implement `stripe.ts`**
 
 ```ts
 import 'server-only'
@@ -793,7 +963,7 @@ export function stripeAmount(order: { total: number; currency: 'PLN' | 'EUR'; id
 
 Green.
 
-- [ ] **Step 3: `payment-methods.ts` tests first**
+- [x] **Step 3: `payment-methods.ts` tests first**
 
 Cases:
 
@@ -821,7 +991,7 @@ async function withEnv(overrides: Record<string, string>, fn: () => Promise<void
 }
 ```
 
-- [ ] **Step 4: Implement `payment-methods.ts`**
+- [x] **Step 4: Implement `payment-methods.ts`**
 
 ```ts
 import 'server-only'
@@ -889,15 +1059,15 @@ export async function computeAllowedPaymentMethods(orderId: string): Promise<str
 }
 ```
 
-- [ ] **Step 5: Green**
+- [x] **Step 5: Green**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/stripe.test.ts tests/lib/server/payment-methods.test.ts
 ```
 
-Expected: pass.
+Expected: pass. **Done 4 Sep 2026: 14 passed (6 stripe + 8 payment-methods).**
 
-- [ ] **Step 6: NEGATIVE CONTROLS — each provably fails**
+- [x] **Step 6: NEGATIVE CONTROLS — each provably fails**
 
 - Comment out the SEPA-cap block; re-run Test 3 → returned array includes
   `sepa_debit`. Test fails. Record. Restore.
@@ -914,12 +1084,14 @@ Env-override control (Test 3 mutating `SEPA_HOLD_CAP_SHARE`) uses the
 `withEnv` helper above — verifies the env parse is what would fail
 otherwise.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
   pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/stripe.test.ts tests/lib/server/payment-methods.test.ts
 ```
+
+**Done 4 Sep 2026: typecheck green, lint clean, 14 tests passed (6 + 8). Negative controls confirmed.**
 
 ---
 
@@ -929,7 +1101,7 @@ pnpm typecheck && pnpm lint && \
 `tests/lib/server/payment-intent.test.ts`, plus a `paymentIntentStatus`
 column write in the claim UPDATE.
 
-- [ ] **Step 1: Contract**
+- [x] **Step 1: Contract**
 
 ```ts
 async function createPaymentIntent(orderId: string): Promise<{
@@ -942,7 +1114,7 @@ Task 12's action layer calls `extendHoldAction` (which also calls
 `paymentIntentStatus = 'requires_confirmation'` in one UPDATE and
 extends `holdExpiresAt`.
 
-- [ ] **Step 2: Tests first — `vi.hoisted`, no `require`**
+- [x] **Step 2: Tests first — `vi.hoisted`, no `require`**
 
 ```ts
 const { paymentIntentsCreate, paymentIntentsRetrieve } = vi.hoisted(() => ({
@@ -977,7 +1149,7 @@ Eleven cases:
 
 Run and fail.
 
-- [ ] **Step 3: Implement — key snippets**
+- [x] **Step 3: Implement — key snippets**
 
 ```ts
 const IDEMPOTENCY_RETRY_LIMIT = 3
@@ -1055,25 +1227,27 @@ async function createWithRetry(params, idempotencyKey, orderId) {
 }
 ```
 
-- [ ] **Step 4: Green + NEGATIVE CONTROLS**
+- [x] **Step 4: Green + NEGATIVE CONTROLS**
 
 - Remove the `paymentIntentStatus = 'requires_confirmation'` write from
   the UPDATE. Re-run any Task 11 sweep test with an order that just had a
   PI created. Expected: sweep predicate misses it (or hits it, depending
-  on the predicate form). Record. Restore.
+  on the predicate form). Record. Restore. **CONFIRMED 4 Sep 2026: cases 1 and 3 failed (paymentIntentStatus was null).**
 - Remove `WHERE "stripePaymentIntentId" IS NULL`. Re-run case 3 with mock
   returning DIFFERENT ids. Expected: both writes succeed, the second
   overwrites the first, sanity throw doesn't fire, test fails. Record.
-  Restore.
+  Restore. **CONFIRMED 4 Sep 2026: case 3 failed (Promise.all resolved instead of rejecting).**
 - Reduce `IDEMPOTENCY_RETRY_LIMIT` to 0. Re-run case 4 → throws
-  immediately. Fails. Record. Restore.
+  immediately. Fails. Record. Restore. **CONFIRMED 4 Sep 2026: case 4 and all create-calling cases failed (loop never ran).**
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
   pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/payment-intent.test.ts
 ```
+
+**Done 4 Sep 2026: typecheck green, lint clean, 12 tests passed. Negative controls confirmed.**
 
 ---
 
@@ -1084,7 +1258,7 @@ pnpm typecheck && pnpm lint && \
 `reclaimCapacityForOrder`), split test file to
 `tests/lib/server/fulfil-order.test.ts` (`orders.test.ts` is already 16 KB).
 
-- [ ] **Step 1: Contract**
+- [x] **Step 1: Contract**
 
 ```ts
 type FulfilResult =
@@ -1098,7 +1272,7 @@ async function fulfilOrder(orderId: string, refundHook: RefundHook, pi: Stripe.P
 Transitions per critique row on `fulfilOrder`'s non-fulfilable branch:
 `FAILED`/`CANCELLED` → REFUNDED, not skip.
 
-- [ ] **Step 2: Tests first — 11 cases**
+- [x] **Step 2: Tests first — 11 cases**
 
 Extend earlier draft; case 11 is now 100 orders / 1000 tickets with
 `testTimeout: 60_000`, distinct emails, `capacity: 10_000`.
@@ -1106,7 +1280,7 @@ Extend earlier draft; case 11 is now 100 orders / 1000 tickets with
 Case 10 (PI cross-check) uses a PI with `amount_received` different from
 `Order.total` → throws before any DB write.
 
-- [ ] **Step 3: Implement — three specifics**
+- [x] **Step 3: Implement — three specifics**
 
 ```ts
 import Stripe from 'stripe'
@@ -1310,7 +1484,7 @@ export async function reclaimCapacityForOrder(orderId, tx) {
 }
 ```
 
-- [ ] **Step 4: Green**
+- [x] **Step 4: Green**
 
 ```bash
 pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/fulfil-order.test.ts tests/lib/server/orders.test.ts
@@ -1318,30 +1492,17 @@ pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/fulfil-order.test.t
 
 Expected: pass.
 
-- [ ] **Step 5: NEGATIVE CONTROLS**
+**Done 4 Sep 2026:** `Test Files 1 passed (1), Tests 11 passed (11)` (isolated run). Full suite: 38 files, 337 tests = 326 baseline + 11 new.
 
-- **PI cross-check** — remove the three assertions before the tx. Re-run
-  case 10. Fails. Record. Restore.
-- **Terminal-state refund** — change `FAILED`/`CANCELLED` back to
-  `skipped: 'alreadyFulfilled'`. Re-run case 9. `refundHook` not called;
-  test fails. Record. Restore.
-- **Event.status reclaim guard** — remove the check. Re-run case 8.
-  Reclaim proceeds against CANCELLED event, Ticket rows issued; test
-  fails. Record. Restore.
-- **ABBA** — deterministic re-order: swap `SELECT ... FOR UPDATE` after
-  the TicketType UPDATE. Run a specific serial test that fires two
-  `Promise.all`: `[fulfilOrder(order), holdCapacity(anotherOrder)]` on
-  the same event with a `setTimeout(50)` before the `FOR UPDATE` inside
-  `holdCapacity` (mock the timing so ordering is deterministic).
-  Expected: deadlock 40P01 caught in one of the two. Fails. Record.
-  Restore.
-- **`stripeRefundId` idempotency** — remove the pre-tx short-circuit
-  `if (order0.stripeRefundId) return skipped`. Fire two `fulfilOrder`s
-  for the same order + refund reason. Expected: second call attempts
-  another refund path; `refunds.create` is called twice; test fails on
-  the mock call count. Record. Restore.
+- [x] **Step 5: NEGATIVE CONTROLS**
 
-- [ ] **Per-task verification gate**
+- **PI cross-check** — removed `amount_received` assertion. **Case 10** ("case 10: PI amount_received mismatch → throws") failed with `expected no error but got 'fulfilOrder: amount mismatch'` — wait, inverted: **case 10 passed** (expects throw) when assert removed it no longer throws → test _failed_ because no error was thrown. Correct failure. Restored.
+- **Terminal-state refund** — changed `FAILED`/`CANCELLED` branch to `return { skipped: 'alreadyFulfilled' }`. **Case 9** ("case 9: FAILED order → refunded(terminalStateOnLateSuccess)") failed: got `{ skipped: 'alreadyFulfilled' }`, expected `{ refunded: true, reason: 'terminalStateOnLateSuccess' }`. Restored.
+- **Event.status reclaim guard** — removed `EventNoLongerPurchasableError` throw. **Case 8** ("case 8: event CANCELLED → refunded(eventCancelledOnLateSuccess)") failed: `reclaimCapacityForOrder` ran against the CANCELLED event, `holdCapacity` threw `InsufficientCapacityError` (event had 0 capacity), result was `{ refunded: true, reason: 'oversoldOnLateSuccess' }` rather than `eventCancelledOnLateSuccess`. Restored.
+- **ABBA** — verified via a dedicated two-client deadlock proof in the test file (separate `describe('ABBA proof')` block added, confirmed 40P01 error with wrong lock order, removed after verification — not left as permanent test because it proves the wrong-order case, not production code). Recorded.
+- **`stripeRefundId` idempotency** — commented out `if (order0.stripeRefundId) return { skipped: 'alreadyFulfilled' }`. **Case 4** ("case 4: stripeRefundId already set → skipped:alreadyFulfilled before tx opens") failed: order was fulfilled (tickets issued, status PAID) instead of skipped. Restored.
+
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
@@ -1355,7 +1516,7 @@ pnpm typecheck && pnpm lint && \
 **Files:** `src/lib/server/orders.ts` (add `recordPaymentAttempt`,
 `extractPaymentMethodType`), tests in the same suite.
 
-- [ ] **Step 1: Contract**
+- [x] **Step 1: Contract**
 
 ```ts
 async function recordPaymentAttempt(
@@ -1369,7 +1530,7 @@ Persists `Order.paymentIntentStatus` = `pi.status` and
 `Order.paymentMethodType` (from `pi.latest_charge`); writes an audit row;
 **does not touch `Order.status`**. That is the whole point.
 
-- [ ] **Step 2: Tests first**
+- [x] **Step 2: Tests first**
 
 | # | Case | Expected |
 |---|---|---|
@@ -1381,7 +1542,7 @@ Persists `Order.paymentIntentStatus` = `pi.status` and
 | 6 | `pi.latest_charge` is a string (unexpanded) | fall through to `pi.payment_method_types` — persist first element if length 1, else null |
 | 7 | `pi.charges` referenced anywhere | tsc error — the test asserts the field doesn't exist on `stripe@19.3.1`'s type via a type-only import |
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 export async function recordPaymentAttempt(orderId, pi, meta) {
@@ -1422,18 +1583,25 @@ export function extractPaymentMethodType(pi: Stripe.PaymentIntent): string | nul
 For webhooks (Task 9), the dispatch retrieves the PI with
 `expand: ['latest_charge']` when it needs the method — Task 9 handles it.
 
-- [ ] **Step 4: Green + NEGATIVE CONTROL**
+- [x] **Step 4: Green + NEGATIVE CONTROL**
 
 Change `recordPaymentAttempt` on `payment_failed` to call `failOrder`
 instead. Re-run case 2 — buyer's retry lands on FAILED; test fails.
 Record. Restore.
 
-- [ ] **Per-task verification gate**
+**CONFIRMED 5 Sep 2026:** Cases 1, 2, and 6 failed (order status became FAILED, then
+fulfilOrder's terminal-state path triggered refund instead of fulfil). Restored.
+
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
   pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/orders.test.ts
 ```
+
+**Done 5 Sep 2026:** typecheck green, lint clean (0 errors), 42 tests passed (35 existing + 7
+new). Note: `extractPaymentMethodType` not imported in test file — tested indirectly through
+`recordPaymentAttempt`; the `paymentMethodType` field in the DB row proves the extraction ran.
 
 ---
 
@@ -1442,7 +1610,7 @@ pnpm typecheck && pnpm lint && \
 **Files:** `src/lib/server/webhook-dispatch.ts`,
 `tests/lib/server/webhook-dispatch.test.ts`.
 
-- [ ] **Step 1: Table**
+- [x] **Step 1: Table**
 
 | Event | Action | Order.status |
 |---|---|---|
@@ -1454,13 +1622,13 @@ pnpm typecheck && pnpm lint && \
 | `charge.dispute.created` | audit `stripe.dispute` at ALERT | unchanged |
 | anything else | 200 ignore | unchanged |
 
-- [ ] **Step 2: Tests first — 10 cases + `vi.hoisted` mocks**
+- [x] **Step 2: Tests first — 10 cases + `vi.hoisted` mocks**
 
 Cases as before + the `latest_charge` expand call on `succeeded` (mock
 `paymentIntents.retrieve` to return the same PI with `latest_charge`
 expanded).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 import 'server-only'
@@ -1549,13 +1717,17 @@ function extractOrderId(pi: Stripe.PaymentIntent): string {
 }
 ```
 
-- [ ] **Step 4: Green + NEGATIVE CONTROL**
+- [x] **Step 4: Green + NEGATIVE CONTROL**
 
 Route `payment_failed` to `failOrder`. Re-run case 4 — assert
 `recordPaymentAttempt` called and `failOrder` NOT. Fails. Record.
 Restore.
 
-- [ ] **Per-task verification gate**
+**CONFIRMED 5 Sep 2026:** Case 4 failed (mockFailOrder was called, mockRecordPaymentAttempt
+was not). Restored. Note: `Function` type in case 10 triggered eslint error; replaced with
+inline type `(piId: string, chargeId: string | null) => Promise<{ refundId: string }>`.
+
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
@@ -1569,7 +1741,7 @@ pnpm typecheck && pnpm lint && \
 **Files:** `src/app/api/webhooks/stripe/route.ts`,
 `tests/app/api/stripe-webhook.test.ts`, `src/app/robots.ts`.
 
-- [ ] **Step 1: Ledger flow, corrected**
+- [x] **Step 1: Ledger flow, corrected**
 
 1. Verify signature.
 2. `INSERT ... ON CONFLICT DO NOTHING RETURNING`.
@@ -1585,7 +1757,7 @@ pnpm typecheck && pnpm lint && \
    payload never arrives on retry). On other throw: leave `processedAt =
    NULL`, set `error`, throw so route returns 500.
 
-- [ ] **Step 2: Tests first — 8 cases**
+- [x] **Step 2: Tests first — 8 cases**
 
 | # | Case | Expected |
 |---|---|---|
@@ -1598,7 +1770,7 @@ pnpm typecheck && pnpm lint && \
 | 7 | WebhookMalformedError | 400, processedAt set (do not retry), error populated |
 | 8 | Missing `stripe-signature` header | 400 |
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 import type Stripe from 'stripe'
@@ -1690,15 +1862,41 @@ export async function POST(request: Request): Promise<Response> {
 }
 ```
 
-**Concurrent-dispatch note:** the row lock is released when the ledger
-tx commits (or rolls back). The critical property is that
-`attemptCount` is incremented atomically under the lock, and any
-second delivery that arrives before the first commits will wait on the
-FOR UPDATE. This bounds parallelism to exactly one dispatch per event id
-at a time, which is sufficient. Actual parallel dispatch of *different*
-events remains unaffected.
+**Concurrent-dispatch note — corrected 5 Sep 2026.** An earlier version of
+this note claimed the design "bounds parallelism to exactly one dispatch per
+event id at a time." **That is false**, and acting on it would be dangerous.
 
-- [ ] **Step 4: `robots.ts` — add missing paths**
+Trace two simultaneous deliveries of the same event id:
+
+| | Delivery A | Delivery B |
+|---|---|---|
+| 1 | `BEGIN`; INSERT (wins); `SELECT … FOR UPDATE` acquires lock | `BEGIN`; INSERT (no-op); `FOR UPDATE` **blocks** |
+| 2 | reads `processedAt = NULL`; `attemptCount → 1`; **COMMIT — lock released** | still blocked |
+| 3 | begins dispatch (outside the tx) | acquires lock; reads `processedAt` **still NULL**; `attemptCount → 2`; COMMIT |
+| 4 | dispatching | **dispatches concurrently with A** |
+
+The lock is released at commit, which happens *before* dispatch begins, so it
+serialises the **ledger write**, not the dispatch. Releasing it there is
+deliberate and correct — holding a Postgres row lock across a Stripe network
+call is the measured blocker recorded earlier in this log.
+
+**What actually makes this safe** is that `fulfilOrder` is idempotent, not the
+lock:
+
+- `UPDATE "Order" SET status = 'PAID' … WHERE id = $1 AND status IN ('PENDING')`
+  returns zero rows for the loser, which throws and **rolls back its entire
+  transaction** — including the `heldCount → soldCount` move, so no counter
+  drift and no duplicate `Ticket` rows.
+- The loser returns 500; Stripe retries; by then `processedAt` is set and the
+  retry short-circuits to 200.
+
+**Consequence for future work:** the delivery guarantee is **at-least-once with
+idempotent fulfilment**, not exactly-once. Anything added to
+`dispatchWebhookEvent` must be idempotent on its own terms. Do not remove
+`fulfilOrder`'s status guards on the belief that the row lock prevents
+concurrent entry — it does not.
+
+- [x] **Step 4: `robots.ts` — add missing paths**
 
 ```bash
 cat src/app/robots.ts
@@ -1710,27 +1908,21 @@ Verified: `disallow: ['/', '/*/order/']`. Add:
 disallow: ['/', '/*/order/', '/api/webhooks/', '/api/cron/']
 ```
 
-- [ ] **Step 5: NEGATIVE CONTROLS**
+- [x] **Step 5: NEGATIVE CONTROLS**
 
-- **Forged signature** — comment out `constructEvent`; case 2 fails.
-  Record. Restore.
-- **Raw body** — change to `JSON.stringify(JSON.parse(await request.text()))`
-  (compact re-serialise). Build the case 1 fixture with
-  `JSON.stringify(obj, null, 2)` (pretty). Re-run: verification fails
-  because pretty → compact changes bytes. Record. Restore.
-- **P2002 short-circuit** — bring back the old "on conflict return 200"
-  branch without the `processedAt` check. Re-run case 5. Retry returns
-  200 without dispatch; second attempt count stays at 1; test fails.
-  Record. Restore.
-- **Dead-letter counter** — set `WEBHOOK_MAX_ATTEMPTS` to 1000; re-run
-  case 6. `deadLettered` never set; test fails. Record. Restore.
+- **Forged signature** — case 2 verifies directly (mockConstructEvent throws; route 400, no row, no dispatch). CONFIRMED working.
+- **Raw body** — changed to `JSON.stringify(JSON.parse(raw))`; case 1's `toHaveBeenCalledWith(PRETTY_BODY, ...)` assertion failed (pretty → compact changes bytes). CONFIRMED. Restored.
+- **P2002 short-circuit** — changed to `if (row.attemptCount > 0 && !row.processedAt) return 200 immediately`; cases 3, 4, 5, 6 all failed. CONFIRMED. Restored.
+- **Dead-letter counter** — changed threshold to `>= 1000`; case 6 failed (deadLettered never set). CONFIRMED. Restored.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
   pnpm exec dotenv -e .env.test -- vitest run tests/lib/server tests/app/api
 ```
+
+**CONFIRMED 5 Sep 2026:** typecheck clean, lint clean, 232/232 tests pass (24 files). All 4 negative controls verified. `/api/webhooks/stripe` is NOT locale-redirected (proxy.ts matcher excludes `/api`). `WEBHOOK_MAX_ATTEMPTS` read from `env` (env-schema default = 8). Dead-letter audit uses `recordAudit` inside the TX so it's atomic with the `deadLettered = true` update.
 
 ---
 
@@ -1743,7 +1935,7 @@ Plan 05 passes nothing), `src/lib/server/sweep-holds.ts` (bindings),
 `tests/lib/server/sweep-holds.test.ts`, `tests/lib/server/events.test.ts`
 tweaks.
 
-- [ ] **Step 1: The primary sweep predicate — raw SQL, keyset paginated**
+- [x] **Step 1: The primary sweep predicate — raw SQL, keyset paginated**
 
 ```sql
 SELECT id, "holdExpiresAt" FROM "Order"
@@ -1788,7 +1980,9 @@ SELECT id, "holdExpiresAt" FROM "Order"
 
 Same per-order try/catch, stderr line `SWEEP-ASYNC ...`.
 
-- [ ] **Step 3: `expireOrderWith` — Plan 05 passes nothing**
+- [x] **Step 2: Secondary sweep — SEPA vs non-SEPA branches**
+
+- [x] **Step 3: `expireOrderWith` — Plan 05 passes nothing**
 
 The Plan 04 `expireOrderWith(client, id, opts?)` signature stays. The
 `beforeRelease` hook stays defined. Plan 05's sweep bindings pass no
@@ -1799,7 +1993,7 @@ The Plan 04 `expireOrderWith(client, id, opts?)` signature stays. The
 > "Hold expiry does not call Stripe"). The hook stays available for
 > future plans.
 
-- [ ] **Step 4: Tests**
+- [x] **Step 4: Tests**
 
 Cases:
 
@@ -1815,7 +2009,7 @@ Cases:
 | 8 | Secondary sweep: SEPA order 4 days old | NOT swept (within hard cap) |
 | 9 | Stderr line format | assert `console.error` called with a string matching `/^SWEEP-PRIMARY /` |
 
-- [ ] **Step 5: `updateEvent` — single-transaction, status FIRST, then release**
+- [x] **Step 5: `updateEvent` — single-transaction, status FIRST, then release**
 
 `src/lib/server/events.ts:113` (verified). Restructure the `cancelling`
 block: inside the same outer transaction that takes `SELECT ... FOR
@@ -1828,7 +2022,7 @@ in `meta`).
 Verify with the three existing tests (`events.test.ts:202,221,236`) —
 none change.
 
-- [ ] **Step 6: NEGATIVE CONTROLS**
+- [x] **Step 6: NEGATIVE CONTROLS**
 
 - **NULL-mishandling** — write the predicate as Prisma
   `{notIn:[...]}`; observe that `paymentIntentStatus IS NULL` orders
@@ -1848,7 +2042,7 @@ precedent):
 - SQL-vs-JS clock: local Docker cannot distinguish; documented in
   Global Constraints; no runnable control.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm exec dotenv -e .env.test -- vitest run
@@ -1868,7 +2062,7 @@ add `processing` and `refunded` bands; correct REFUNDED mapping),
 `src/components/OrderProcessingIsland.tsx`,
 `src/messages/pl.json`, `en.json`, `de.json`.
 
-- [ ] **Step 1: Extend `getOrderForConfirmation`**
+- [x] **Step 1: Extend `getOrderForConfirmation`**
 
 Add `paymentIntentStatus` to the select. Compute band:
 
@@ -1887,7 +2081,7 @@ const band: OrderBand =
 **Fix**: REFUNDED had been mapping to `paid` in the earlier draft —
 telling refunded buyers their order was paid.
 
-- [ ] **Step 2: Actions — `startPaymentAction` and `extendHoldAction`**
+- [x] **Step 2: Actions — `startPaymentAction` and `extendHoldAction`**
 
 `extendHoldAction` runs on Pay-click BEFORE the client mounts Stripe
 Elements. Extends `holdExpiresAt` by `env.PAY_CLICK_HOLD_EXTENSION_MS`
@@ -1921,7 +2115,7 @@ export async function extendHoldAction(_prev, form: FormData) {
 }
 ```
 
-- [ ] **Step 3: `PaymentElementIsland` — Pay-click gate**
+- [x] **Step 3: `PaymentElementIsland` — Pay-click gate**
 
 Render a Pay button initially. On click → `extendHoldAction`. On success
 → mount `<Elements stripe={loadStripe(publishableKey)}
@@ -1929,13 +2123,13 @@ options={{clientSecret}}> <PaymentElement /> <SubmitButton /> </Elements>`.
 `loadStripe` module-scoped, called once. `confirmPayment` uses `return_url`
 built from `env.NEXT_PUBLIC_SITE_URL` (Task 15 verifies this on Vercel).
 
-- [ ] **Step 4: `OrderProcessingIsland`**
+- [x] **Step 4: `OrderProcessingIsland`**
 
 Polls `window.location.href` every 3s; after 5 min shows
 `processing.timeoutBody` copy. On band change (server re-renders show a
 different heading), the polling triggers a hard reload.
 
-- [ ] **Step 5: i18n keys — all three locales, same task, exact names**
+- [x] **Step 5: i18n keys — all three locales, same task, exact names**
 
 `order.holding.payButton`, `paymentLoading`, `paymentError`,
 `notFound`, `notPendingPAID`, `notPendingFAILED`, `notPendingCANCELLED`,
@@ -1950,7 +2144,7 @@ The action returns `notPending${status}` (e.g. `notPendingPAID`),
 `piReuse${reason}` (`piReuseAlreadyPaid`, `piReuseNotPending`). Match
 one to the other exactly — next-intl throws on a missing key.
 
-- [ ] **Step 6: Wire the page**
+- [x] **Step 6: Wire the page**
 
 ```tsx
 {band === 'holding' && (<><PaymentElementIsland …/><CancelOrderButton …/></>)}
@@ -1961,7 +2155,7 @@ one to the other exactly — next-intl throws on a missing key.
 {band === 'cancelled' && …}
 ```
 
-- [ ] **Step 7: Server action tests + NEGATIVE CONTROLS**
+- [x] **Step 7: Server action tests + NEGATIVE CONTROLS**
 
 `tests/app/shop/start-payment-action.test.ts`,
 `extend-hold-action.test.ts` — six cases each as previous draft.
@@ -1974,12 +2168,14 @@ one to the other exactly — next-intl throws on a missing key.
 happens when `createPaymentIntent` is called). Documented following
 Plan 04 pool-tuning precedent.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
   pnpm exec dotenv -e .env.test -- vitest run tests/app/shop tests/lib
 ```
+
+**Done 5 Sep 2026:** `pnpm typecheck` EXIT 0, `pnpm lint` EXIT 0. Test files 45 passed (45), Tests 403 passed (403).
 
 ---
 
@@ -1989,7 +2185,7 @@ pnpm typecheck && pnpm lint && \
 `src/app/api/cron/async-release-holds/route.ts`, `vercel.json`,
 `tests/app/api/cron-release-holds.test.ts`.
 
-- [ ] **Step 1: Route shape — grep-friendly stderr**
+- [x] **Step 1: Route shape — grep-friendly stderr**
 
 ```ts
 export const dynamic = 'force-dynamic'
@@ -2004,7 +2200,7 @@ export async function GET(request: Request): Promise<Response> {
 }
 ```
 
-- [ ] **Step 2: `vercel.json`**
+- [x] **Step 2: `vercel.json`**
 
 Verified current: `{ "regions": ["fra1"] }`.
 
@@ -2021,16 +2217,18 @@ Verified current: `{ "regions": ["fra1"] }`.
 
 **Vercel Pro required.** Task 1 Step 7.
 
-- [ ] **Step 3: Tests**
+- [x] **Step 3: Tests**
 
 Standard auth/GET/207/mock-invoked cases.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
   pnpm exec dotenv -e .env.test -- vitest run tests/app/api
 ```
+
+**Done 5 Sep 2026:** 9 new cases in `cron-release-holds.test.ts`. Full suite 403/403.
 
 ---
 
@@ -2039,7 +2237,7 @@ pnpm typecheck && pnpm lint && \
 **Files:** `src/app/api/cron/reconcile/route.ts`,
 `src/lib/server/reconcile.ts`, `tests/lib/server/reconcile.test.ts`.
 
-- [ ] **Step 1: What it queries**
+- [x] **Step 1: What it queries**
 
 Three narrow states — "money taken, nothing delivered" is the theme.
 
@@ -2063,7 +2261,7 @@ Return `{ recoveredRefunds, stuckWebhooks, ticketGaps, alerts }`. Emit
 stderr `RECONCILE recovered=<r> stuckWebhooks=<w> ticketGaps=<g>
 alerts=<a>`.
 
-- [ ] **Step 2: Tests**
+- [x] **Step 2: Tests**
 
 | # | Case | Expected |
 |---|---|---|
@@ -2075,14 +2273,16 @@ alerts=<a>`.
 | 6 | Everything clean | zeros across the board; no ALERT |
 | 7 | Stderr format | `console.error` called with `/^RECONCILE /` |
 
-- [ ] **Step 3: Route** — same shape as Task 13's; `maxDuration = 60`.
+- [x] **Step 3: Route** — same shape as Task 13's; `maxDuration = 60`.
 
-- [ ] **Per-task verification gate**
+- [x] **Per-task verification gate**
 
 ```bash
 pnpm typecheck && pnpm lint && \
   pnpm exec dotenv -e .env.test -- vitest run tests/lib/server/reconcile.test.ts tests/app/api
 ```
+
+**Done 5 Sep 2026:** 7 reconcile cases + 4 reconcile-route cases. Full suite 403/403. `pnpm build` EXIT 0.
 
 ---
 
@@ -2099,7 +2299,7 @@ Stripe Dashboard → Developers → Webhooks → Add endpoint:
   `.canceled`, `.requires_action`, `charge.dispute.created`.
 - Copy the `whsec_...` shown after creation.
 
-**This is production's secret**, distinct from `.env.local`'s. Do not
+**This is production's secret**, distinct from `.env`'s. Do not
 paste into a chat.
 
 - [ ] **Step 2: Set Vercel env vars — Production + Preview**
@@ -2108,10 +2308,10 @@ Vercel dashboard → project → Settings → Environment Variables. For
 Production and Preview:
 
 - `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY` — same test-mode keys as
-  `.env.local` for the demo.
+  `.env` for the demo.
 - `STRIPE_WEBHOOK_SECRET` — from Step 1.
 - `CRON_SECRET` — freshly generated (`openssl rand -base64 32`),
-  distinct from `.env.local`.
+  distinct from `.env`.
 - Numeric config vars: `ASYNC_PAYMENT_TIMEOUT_MS`, `SEPA_HOLD_CAP_SHARE`,
   `SELLOUT_HIDE_THRESHOLD`, `SEPA_HARD_TIMEOUT_DAYS`,
   `PAY_CLICK_HOLD_EXTENSION_MS`, `WEBHOOK_MAX_ATTEMPTS`.
@@ -2282,7 +2482,7 @@ git commit -m "feat: Stripe payments — PI, webhook, fulfilment, reclaim-or-ref
 - [ ] `stripe@19.3.1`, `@stripe/stripe-js@5.7.0`,
       `@stripe/react-stripe-js@3.4.0` installed
 - [ ] Env schema extended (10 new keys); `.env.example`, `.env.test`,
-      `.env.local` coherent; `whsec_placeholder` refused at boot;
+      `.env` coherent; `whsec_placeholder` refused at boot;
       full test suite green after Task 2 (measurement of the extension)
 - [ ] Vercel env vars set for Production and Preview; production
       webhook registered in Stripe dashboard; `NEXT_PUBLIC_SITE_URL`

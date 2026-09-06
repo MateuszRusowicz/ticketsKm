@@ -117,4 +117,24 @@ describe('schema', () => {
       db.stripeWebhookEvent.create({ data: { stripeEventId: 'evt_1', type: 'payment_intent.succeeded' } }),
     ).rejects.toThrow()
   })
+
+  it('Order has paymentIntentStatus, paymentMethodType, refundRequestedAt, stripeRefundId', async () => {
+    const cols = await db.$queryRawUnsafe<Array<{ column_name: string }>>(`
+      SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'Order'
+         AND column_name IN ('paymentIntentStatus','paymentMethodType','refundRequestedAt','stripeRefundId')
+    `)
+    expect(cols.map((c) => c.column_name).sort()).toEqual(
+      ['paymentIntentStatus', 'paymentMethodType', 'refundRequestedAt', 'stripeRefundId'],
+    )
+  })
+
+  it('StripeWebhookEvent has attemptCount, deadLettered', async () => {
+    const cols = await db.$queryRawUnsafe<Array<{ column_name: string }>>(`
+      SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'StripeWebhookEvent'
+         AND column_name IN ('attemptCount','deadLettered')
+    `)
+    expect(cols.map((c) => c.column_name).sort()).toEqual(['attemptCount', 'deadLettered'])
+  })
 })

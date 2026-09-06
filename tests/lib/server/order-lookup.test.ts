@@ -106,6 +106,7 @@ describe('getOrderForConfirmation', () => {
     ['EXPIRED', 'cancelled'],
     ['FAILED', 'cancelled'],
     ['PAID', 'paid'],
+    ['REFUNDED', 'refunded'],
   ] as const)('maps %s to the %s band', async (status, band) => {
     const created = await anOrder()
     await db.order.update({ where: { id: created.orderId }, data: { status } })
