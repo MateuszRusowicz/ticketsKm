@@ -3,7 +3,7 @@
 import { useForm, useWatch } from 'react-hook-form'
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema'
 import { useTranslations } from 'next-intl'
-import { useActionState } from 'react'
+import { useActionState, useEffect } from 'react'
 import {
   submitCheckout,
   type SubmitState,
@@ -36,10 +36,13 @@ export function CheckoutForm({
   const [state, action] = useActionState<SubmitState, FormData>(submitCheckout, {})
   const serverErrors = 'errors' in state ? state.errors : undefined
   const formError = serverErrors?._form?.[0]
+  // Present when the action returned an error; used below to repopulate fields.
+  const submittedValues = 'errors' in state ? state.values : undefined
 
   const {
     register,
     control,
+    reset,
     formState: { errors },
   } = useForm<CheckoutInput>({
     resolver: standardSchemaResolver(checkoutSchema),
@@ -60,6 +63,20 @@ export function CheckoutForm({
   // re-rendering the whole form on every keystroke, and watch() returns a
   // function React Compiler cannot memoize, which makes it skip the component.
   const needsInvoice = useWatch({ control, name: 'needsInvoice' })
+
+  // After a failed server-action submit the action returns the submitted
+  // values alongside the errors. Reset the form to those values so the buyer
+  // does not have to retype their name, attendee names and invoice details.
+  // The effect runs after the render that carries the new state reference, so
+  // fields are repopulated before the buyer can interact with them again.
+  // Covers: email, firstName, lastName, phone, attendeeNames (array),
+  // needsInvoice (checkbox), companyName, nip, invoiceAddress, acceptedTerms,
+  // and the four hidden fields (ticketTypeId, quantity, locale, currency).
+  useEffect(() => {
+    if (submittedValues) {
+      reset(submittedValues)
+    }
+  }, [submittedValues, reset])
 
   /** Zod carries message keys, not sentences, so errors land in the buyer's language. */
   const msg = (key?: string) => (key ? tv(key as 'required') : undefined)

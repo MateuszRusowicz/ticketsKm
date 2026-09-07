@@ -129,7 +129,7 @@ reproduction simply failed to trigger it.
 | 14 | Reconciliation cron — three narrow states | ✅ 11 new tests (7+4) |
 | **15** | **Vercel deployment** | **next — owner action required** |
 
-**Suite is now 403 tests** across 45 files, green from a clean tree. `pnpm typecheck`, `pnpm lint`, and `pnpm build` all EXIT 0.
+**Suite is now 411 tests** across 46 files, green from a clean tree. `pnpm typecheck`, `pnpm lint`, and `pnpm build` all EXIT 0.
 
 **New files (Tasks 12–14):**
 - `src/lib/server/reconcile.ts` — reconciliation logic (stuck refunds, stuck webhooks, ticket gaps)
@@ -189,6 +189,42 @@ dated supersession notice pointing at `00-decisions.md`. Deliberate, per the
 **Still outstanding for the owner:** `NEXT_PUBLIC_SITE_URL` on Vercel must be
 `https://tickets-km.vercel.app` (Task 15) — a wrong value breaks four of the six
 demo flows, and only in production.
+
+### UX backlog — z ręcznego przejścia 7 Sep 2026
+
+Znalezione przez właściciela podczas Task 16 Step 7. Żadne nie blokuje demo;
+wszystkie są realne.
+
+| # | Rzecz | Status | Gdzie |
+|---|---|---|---|
+| 1 | **Formularz zamówienia czyścił się przy błędzie walidacji.** Wpisanie złego e-maila kasowało wszystkie pola. Przyczyna: `SubmitState` zwracał wyłącznie błędy, a `<form action={…}>` resetuje niekontrolowane pola po powrocie akcji. **Naprawione 7 Sep 2026:** akcja zwraca `values: Partial<CheckoutInput>` przy każdym błędzie; `CheckoutForm` wywołuje `reset(submittedValues)` w `useEffect` po zmianie stanu. | **gotowe** | `CheckoutForm.tsx`, `zamowienie/actions.ts` |
+| 2 | **Link (portfel Stripe'a) przeszkadza przy jednorazowym zakupie.** Napis „powrót do płatności poza usługą Link" jest niezrozumiały, a powrót do listy metod ukryty pod ikoną trzech kropek. `link` **nie jest** w naszym `payment_method_types` — Element pokazuje go, bo Link jest włączony na koncie. Wyłączenie to przełącznik w Dashboardzie, nie zmiana w kodzie. | do zrobienia (Dashboard) | Stripe → Settings → Payment methods → Link |
+| 3 | **Brak powiadomień o zdarzeniach.** Stan komunikuje tylko sekcja strony (`holding` / `processing` / `paid` / `refunded`); nie ma toastów przy anulowaniu, opłaceniu ani błędzie. Świadomie poza zakresem Planu 05. | **Plan 06/07** | — |
+
+| 4 | **Po zapłacie karta znika, ale zostaje przycisk „Zapłać".** Buyer wraca z `return_url`, widzi podsumowanie z aktywnym przyciskiem, klika — dostaje „bilety już opłacone". **To wyścig, nie literówka:** przekierowanie ze Stripe'a wraca szybciej niż webhook, więc w tym oknie `Order.status` to wciąż `PENDING`, a `paymentIntentStatus` to `requires_confirmation`. Pasmo liczone w `order-lookup.ts:105` sprawdza tylko `['processing','requires_action','requires_capture']`, więc spada do `holding` i renderuje przycisk. | **gotowe** — naprawione 7 Sep 2026: `getOrderForConfirmation` odpytuje Stripe o rzeczywisty status PI gdy zamówienie jest `PENDING` z PI; `succeeded` → pasmo `processing` (polling island). Zakres: `order-lookup.ts`, nowy plik testowy `tests/lib/server/order-lookup-stripe.test.ts`. | `order-lookup.ts`, strona zamówienia |
+| 5 | **PayPal włączony w Dashboardzie nie zadziała.** Wysyłamy jawną listę `payment_method_types`, która nadpisuje konfigurację konta. Wymaga `methods.add('paypal')` w `payment-methods.ts` (gałąź EUR) — plus decyzji, czy PayPal podlega jakimś ograniczeniom jak SEPA. | decyzja właściciela | `payment-methods.ts` |
+
+**Nie naprawiać przez dopisanie `requires_confirmation` do listy pasma `processing`.** Ta wartość jest zapisywana przy tworzeniu PaymentIntentu, czyli przy kliknięciu „Zapłać" — ale kupujący może wtedy porzucić płatność bez podania karty. Pokazywanie mu „przetwarzamy" w nieskończoność odebrałoby mu możliwość ponowienia.
+
+Właściwa naprawa: gdy zamówienie jest `PENDING` **i** ma `stripePaymentIntentId`, odpytać Stripe o rzeczywisty status PI i z niego wyliczyć pasmo. Jedno zapytanie do API, tylko na tej wąskiej ścieżce. Działa dla wszystkich metod, nie tylko tych z przekierowaniem, i samoczynnie naprawia sytuację, w której webhook w ogóle nie dotarł.
+
+### Waluta — decyzja właściciela (7 Sep 2026, wykonano)
+
+Dziś waluta wynika z języka (`pl` → PLN, `en`/`de` → EUR), jest przełączalna w nagłówku i trzymana w ciasteczku. Właściciel zgłasza, że **wybór jest niewidoczny**, a metody płatności zależą od niego po cichu.
+
+**Decyzja właściciela (7 Sep 2026):**
+- Przełącznik walut w nagłówku (`CurrencySwitcher`) **zostaje bez zmian** — nie zamieniamy go w dropdown, nie ruszamy pliku.
+- Dropdown wyboru waluty dodany wyłącznie w **BuyBox** — w miejscu, gdzie kupujący decyduje się kupić. Zmiana wywołuje `setCurrencyAction` + `router.refresh()` (ten sam wzorzec co nagłówek).
+- Poniżej dropdownu wyświetlana jest linia „Płacisz w PLN m.in.: karta, BLIK, Przelewy24" (klucz i18n `payingIn`, hedging `m.in.` celowy — lista jest przybliżona, guardrails SEPA są po stronie serwera).
+- **PayPal (tylko EUR) nie podlega ograniczeniom SEPA** (limit współbieżnych holdów, ukrywanie przy wyprzedaniu) — rozlicza się w sekundy jak karta; ograniczenia istnieją tylko dlatego, że SEPA rezerwuje miejsca na dni. Decyzja właściciela, 7 Sep 2026.
+
+Uwaga: waluta jest zamrażana na stronie zamówienia (decyzja z 2 Sep), więc dropdown działa wyłącznie przed tym krokiem.
+
+Uwaga do #3: toasty wymagają biblioteki po stronie klienta, a testy działają w
+środowisku Node bez DOM (`environment: 'node'`, `include: ['tests/**/*.test.ts']`),
+więc same komponenty nie będą pokryte testami. Logika decydująca *co* pokazać
+powinna trafić do funkcji czystej w `src/lib/shared/`, żeby dało się ją
+przetestować.
 
 **Next up: EXECUTE Plan 05 (payments), checkout half only.**
 [`steps/05-payments.md`](steps/05-payments.md) — **written, critiqued twice,

@@ -92,6 +92,11 @@ export async function dispatchWebhookEvent(
       const orderId = extractOrderId(pi0)
       // Expand latest_charge so extractPaymentMethodType sees the full Charge object.
       const pi = await stripe.paymentIntents.retrieve(pi0.id, { expand: ['latest_charge'] })
+      // Record the observed PI status and payment method type BEFORE fulfilling.
+      // Order matters: the PI genuinely succeeded at Stripe regardless of what fulfilOrder
+      // then does. Persisting the fact first means it survives a fulfilOrder throw (Stripe
+      // retries) and remains truthful when fulfilOrder takes the refund branch.
+      await recordPaymentAttempt(orderId, pi, { reason: 'succeeded' })
       const refundHook = buildRefundHook(pi.id)
       const result = await fulfilOrder(orderId, refundHook, pi)
       return { acknowledged: true, action: 'fulfilOrder', detail: JSON.stringify(result) }

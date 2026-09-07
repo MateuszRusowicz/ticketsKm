@@ -13,7 +13,7 @@ Three documents, three jobs:
 | [`plan/STATUS.md`](plan/STATUS.md) | Which task is next, and what is half-finished |
 | **This file** | Who has access to what, and how to operate it |
 
-Last updated: **30 August 2026.**
+Last updated: **7 September 2026.**
 
 ---
 
@@ -24,8 +24,9 @@ concerts each August, sold in three languages (PL / EN / DE) and two currencies
 (PLN / EUR), taking payment through Stripe with local methods (BLIK, Przelewy24,
 cards). It replaces the Wix ticketing the festival used previously, and will
 live at `bilety.krzyzowa-music.eu`, linked from the main Wix marketing site.
-The admin back-office is real and working today; the public storefront, payments,
-email, PDF tickets and the door scanner are not built yet.
+The admin back-office, the public storefront and **payments** all work today
+and have been walked through by hand. Email, PDF tickets and the door scanner
+are not built yet.
 
 ---
 
@@ -311,6 +312,46 @@ there is an announced on-sale moment, and logo files in a vector format.
 
 ---
 
+## Operations — payments, what a human must know
+
+**Manual testing is not optional here.** The test suite is 427 tests strong but
+runs in Node **with no DOM** (`vitest.config.mts`: `environment: 'node'`,
+`include: ['tests/**/*.test.ts']`). Forms, the Stripe Payment Element and the
+currency dropdown therefore have **no automated coverage at all**. On 7 Sep 2026
+a hand walkthrough found four real defects that all 400+ tests had passed over:
+
+| Found by clicking | What it was |
+|---|---|
+| Webhooks never fired | Stripe CLI on a sandbox account, app on another |
+| `paymentIntentStatus` stuck, `paymentMethodType` always null for cards | the `succeeded` branch never recorded the attempt |
+| Checkout form wiped itself on a bad e-mail | the action returned errors but not the submitted values |
+| "Pay" button still shown after paying | the redirect beat the webhook; band came from the stale stored mirror |
+
+Run [`plan/DEPLOY-PLAN-05.md`](plan/DEPLOY-PLAN-05.md) Part 3 before every
+release that touches checkout. It is the only layer that catches this class.
+
+**Payment methods are driven by currency, not language.** PLN gives card, BLIK
+and Przelewy24; EUR gives card, Klarna, SEPA and PayPal. The buyer picks the
+currency in a dropdown in the buy box, and the line beneath it names the methods
+that follow. Currency is then **frozen at the order page** so the summary and
+the charge cannot diverge.
+
+**PayPal is deliberately exempt from the SEPA guardrails** (cap on concurrent
+holds, hide near sellout). Those exist because SEPA holds seats for days; PayPal
+settles in seconds. Do not "fix" this by making it consistent.
+
+**Klarna is still unverified.** It needs a real phone number to complete, so it
+was never exercised. Whether it is available to a *live* Polish account remains
+an open question — a test account offering it proves nothing.
+
+**Alerts are a stopgap.** Anything needing a human is `console.error` on
+**stderr** — Vercel captures stderr, not response bodies. Grep the runtime logs
+for `alerts=[1-9]` and `RECONCILE`. There is no notification of any kind until
+Plan 07's admin dashboard, so nobody learns about a stuck refund unless somebody
+looks.
+
+---
+
 ## What happens next
 
 **The milestone is a Stripe test-mode demo** (decided 2 Sep 2026): a product
@@ -329,22 +370,62 @@ only once that demo is accepted.
 4. Plan 02's tasks 7–9 (domain, backups, database cutover) land at launch, as
    does the Wix link-through.
 
-### Blocking Plan 05 — **three of four cleared 4 Sep 2026**
+### Blocking Plan 05 — **all local work done; only deployment remains**
+
+**Plan 05's code is complete and the local walkthrough has passed** (7 Sep
+2026). What is left is Task 15 — Vercel and the Stripe dashboard — and it is
+written out step by step in [`plan/DEPLOY-PLAN-05.md`](plan/DEPLOY-PLAN-05.md).
+Use that file, not this table, to actually do it.
 
 | | What | State |
 |---|---|---|
-| 1 | **Stripe keys.** `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, all test-mode, all in **`.env`**. | ✅ done. They arrived misnamed and swapped — the secret sat in `STRIPE_API_KEY` and the publishable in `STRIPE_SECRET_KEY`. **Verify the prefix, never the name.** `.env` is git-ignored and has never been committed. |
-| 2 | **Webhook secret.** | ✅ local value in place, from `stripe listen`. Production needs a **different** `whsec_` from registering the endpoint in the dashboard — Plan 05 Task 15. |
-| 3 | **Upgrade Vercel to Pro.** | ⬜ **outstanding — the last owner item.** On Hobby, cron granularity is once daily, so **both hold-sweeps silently never run** and abandoned seats are never released. Hobby also forbids commercial use. |
-| 4 | **Set `NEXT_PUBLIC_SITE_URL` on Vercel** to `https://tickets-km.vercel.app`. | ⬜ Plan 05 Task 15. The payment `return_url` is built from it. If it still reads `localhost:3000`, every BLIK / Przelewy24 / Klarna buyer is redirected to their own machine — four of the six demo flows, failing only in production. |
+| 1 | **Stripe keys** in `.env`, all test-mode | ✅ done. They arrived misnamed and swapped — the secret sat in `STRIPE_API_KEY` and the publishable in `STRIPE_SECRET_KEY`. **Verify the prefix, never the name.** |
+| 2 | **Local webhook secret** | ✅ from `stripe listen`. Production needs a **different** `whsec_` from registering the endpoint in the dashboard. |
+| 3 | **Vercel Pro** | ✅ done 4 Sep 2026. |
+| 4 | **Four env vars on Vercel** — `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `CRON_SECRET` | ⬜ **the deploy fails without them.** Measured 6 Sep: the build died at page-data collection with `Invalid environment configuration:` naming exactly these four. The six numeric config vars are optional — every one has a schema default equal to the value you would type. |
+| 5 | **`NEXT_PUBLIC_SITE_URL` on Vercel** = `https://tickets-km.vercel.app` | ⬜ The payment `return_url` is built from it. If it reads `localhost:3000`, every BLIK / P24 / Klarna / PayPal buyer is redirected to their own machine — and it fails **only in production**, so the local walkthrough will not catch it. Baked in at build time: editing it does nothing without a redeploy. |
+
+**A failed build still applies migrations.** `vercel-build` is
+`prisma migrate deploy && prisma generate && next build`, so when the 6 Sep
+build failed on env vars, the Plan 05 migration had *already* landed on Neon.
+After such a failure the database is ahead of the deployed code — do not try to
+re-apply it.
 
 **Local Stripe setup, for whoever rebuilds it.** All Stripe variables live in
 `.env` (not `.env.local` — the plan's original wording was wrong and is
 corrected). The Stripe CLI is **not in Ubuntu's apt repos**; it installs as a
-binary into `~/.local/bin`. At `stripe login` choose **test mode, not
-sandbox** — a sandbox is a separate account that also issues `sk_test_` keys,
-so the mismatch is invisible until every webhook fails signature verification.
-`stripe config --list` must show `acct_1UBpQ6GVCpToPFr7`.
+binary into `~/.local/bin`.
+
+> **The sandbox trap — this cost a full debugging session on 7 Sep 2026.**
+> At `stripe login` it is possible to authorise a **sandbox**, which is a
+> *separate account* that also issues `sk_test_` keys. Nothing in the key
+> prefix reveals the mismatch. The app then creates PaymentIntents on one
+> account while `stripe listen` subscribes to events on the other, so **real
+> payments produce no webhooks at all** — orders sit at `PENDING` forever while
+> Stripe's own dashboard shows success. `stripe trigger` still works, because
+> it creates its PaymentIntent on the CLI's account, which makes the setup look
+> healthy.
+>
+> The CLI is currently logged into a sandbox (`acct_1UBpPOGTx5eWuMMc`), while
+> the app uses `acct_1UBpQ6GVCpToPFr7`. **Always start the listener pinned to
+> the app's account:**
+>
+> ```bash
+> set -a; . ./.env; set +a
+> stripe listen --api-key "$STRIPE_SECRET_KEY" \
+>   --forward-to localhost:3000/api/webhooks/stripe
+> ```
+>
+> Note that `stripe config --list` reflects the stored *login*, not the account
+> a single command used, so it is **not** a valid check when `--api-key` is in
+> play. To verify, look at the PaymentIntent id in the event: it embeds the
+> account (`pi_…GVCpToPFr7…` is the app's). Alternatively run `stripe login`
+> again and pick the non-sandbox account, after which the flag is unnecessary.
+
+**`.env` must contain `CRON_SECRET`.** The env schema requires it with no
+default, and `.env` is git-ignored, so no test or gate will catch its absence —
+`pnpm dev` simply refuses to boot. Generate with `openssl rand -base64 32`.
+Vercel needs a **different** value.
 
 Every plan is written just before it is executed, so it describes the code that
 actually exists. **Have each one critiqued by subagents before executing it** —

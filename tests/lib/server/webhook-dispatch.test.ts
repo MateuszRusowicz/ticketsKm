@@ -123,7 +123,8 @@ describe('dispatchWebhookEvent', () => {
     expect(mockFulfilOrder).toHaveBeenCalledOnce()
     expect(mockFulfilOrder.mock.calls[0][0]).toBe(validOrderId)
 
-    expect(mockRecordPaymentAttempt).not.toHaveBeenCalled()
+    // recordPaymentAttempt IS now called on succeeded (see case 11)
+    expect(mockRecordPaymentAttempt).toHaveBeenCalledOnce()
     expect(mockFailOrder).not.toHaveBeenCalled()
   })
 
@@ -199,6 +200,38 @@ describe('dispatchWebhookEvent', () => {
     expect(auditArg.action).toBe('stripe.dispute')
     expect(auditArg.meta?.severity).toBe('ALERT')
     expect(auditArg.entityId).toBe('ch_dispute_c6')
+  })
+
+  // Case 11 — succeeded: recordPaymentAttempt({ reason: 'succeeded' }) called BEFORE fulfilOrder
+  // Regression guard: paymentIntentStatus and paymentMethodType must be written on the succeeded
+  // path — the PI status is a truthful fact regardless of what fulfilOrder then does, and must
+  // be persisted even if fulfilOrder throws (Stripe retries) or takes the refund branch.
+  it('case 11: succeeded → recordPaymentAttempt({ reason: "succeeded" }) called before fulfilOrder with expanded PI', async () => {
+    const expandedPi = makePi({
+      id: 'pi_c11',
+      status: 'succeeded',
+      latest_charge: { id: 'ch_c11', payment_method_details: { type: 'card' } },
+    })
+    mockRetrieve.mockResolvedValueOnce(expandedPi)
+
+    const pi = makePi({ id: 'pi_c11', status: 'succeeded' })
+    const event = makeEvent('payment_intent.succeeded', pi)
+
+    await dispatchWebhookEvent(event)
+
+    // recordPaymentAttempt must be called with reason: 'succeeded' and the EXPANDED PI
+    expect(mockRecordPaymentAttempt).toHaveBeenCalledOnce()
+    const [rpaOrderId, rpaPi, rpaMeta] = mockRecordPaymentAttempt.mock.calls[0]
+    expect(rpaOrderId).toBe(validOrderId)
+    expect(rpaPi).toBe(expandedPi)
+    expect(rpaMeta).toEqual({ reason: 'succeeded' })
+
+    // recordPaymentAttempt must be called BEFORE fulfilOrder (order matters: PI status
+    // must be persisted even when fulfilOrder throws or takes the refund branch)
+    expect(mockFulfilOrder).toHaveBeenCalledOnce()
+    const rpaCallOrder = mockRecordPaymentAttempt.mock.invocationCallOrder[0]
+    const fulfilCallOrder = mockFulfilOrder.mock.invocationCallOrder[0]
+    expect(rpaCallOrder).toBeLessThan(fulfilCallOrder)
   })
 
   // Case 7 — unknown event type → acknowledged, action: 'ignored'

@@ -105,7 +105,7 @@ describe('submitCheckout', () => {
   it('returns field errors and holds nothing when validation fails', async () => {
     const result = await submitCheckout({}, form({ email: 'not-an-email' }))
 
-    expect(result).toMatchObject({ errors: { email: expect.any(Array) } })
+    expect(result).toEqual({ errors: { email: expect.any(Array) }, values: expect.any(Object) })
     expect(await db.order.count()).toBe(0)
     expect(await heldCount(ticketTypeId)).toBe(0)
   })
@@ -115,7 +115,7 @@ describe('submitCheckout', () => {
 
     const result = await submitCheckout({}, form({ ticketTypeId: t }, 2))
 
-    expect(result).toEqual({ errors: { _form: ['soldOut'] } })
+    expect(result).toEqual({ errors: { _form: ['soldOut'] }, values: expect.any(Object) })
     expect(await db.order.count()).toBe(0)
   })
 
@@ -126,7 +126,7 @@ describe('submitCheckout', () => {
 
     const result = await submitCheckout({}, fd)
 
-    expect(result).toEqual({ errors: { attendeeNames: ['incomplete'] } })
+    expect(result).toEqual({ errors: { attendeeNames: ['incomplete'] }, values: expect.any(Object) })
     expect(await db.order.count()).toBe(0)
   })
 
@@ -137,7 +137,7 @@ describe('submitCheckout', () => {
     }
 
     const blocked = await submitCheckout({}, form({ email: 'over@example.test' }))
-    expect(blocked).toEqual({ errors: { _form: ['rateLimited'] } })
+    expect(blocked).toEqual({ errors: { _form: ['rateLimited'] }, values: expect.any(Object) })
 
     currentIp = '5.6.7.8'
     await expect(submitCheckout({}, form({ email: 'other@example.test' }))).rejects.toThrow(
@@ -160,5 +160,44 @@ describe('submitCheckout', () => {
     expect(second).toBe(first)
     expect(await db.order.count()).toBe(1)
     expect(await heldCount(ticketTypeId)).toBe(2)
+  })
+
+  it('echoes submitted values alongside field errors after a Zod validation failure', async () => {
+    // This test must FAIL before the fix: the current action returns only
+    // { errors: ... } with no `values` key.
+    const result = await submitCheckout({}, form({ email: 'not-an-email' }))
+
+    expect(result).toMatchObject({
+      errors: { email: expect.any(Array) },
+      values: {
+        email: 'not-an-email',
+        firstName: 'Jan',
+        lastName: 'Kowalski',
+        quantity: 2,
+        attendeeNames: ['Gość 1', 'Gość 2'],
+        needsInvoice: false,
+        locale: 'pl',
+        currency: 'PLN',
+      },
+    })
+    expect(await db.order.count()).toBe(0)
+  })
+
+  it('echoes submitted values alongside a _form-level error', async () => {
+    // This test must FAIL before the fix — covers the non-Zod error paths
+    // (InsufficientCapacityError and the rateLimited path).
+    const t = await makeConcert(1)
+    const result = await submitCheckout({}, form({ ticketTypeId: t }, 2))
+
+    expect(result).toMatchObject({
+      errors: { _form: ['soldOut'] },
+      values: {
+        firstName: 'Jan',
+        lastName: 'Kowalski',
+        quantity: 2,
+        attendeeNames: ['Gość 1', 'Gość 2'],
+        needsInvoice: false,
+      },
+    })
   })
 })

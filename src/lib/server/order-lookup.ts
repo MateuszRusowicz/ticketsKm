@@ -2,6 +2,7 @@ import 'server-only'
 import { timingSafeEqual } from 'node:crypto'
 import type { Locale } from '@/lib/shared/locale'
 import { db } from './db'
+import { stripe } from './stripe'
 
 /**
  * Which state the confirmation page renders.
@@ -62,6 +63,7 @@ export async function getOrderForConfirmation(
       accessToken: true,
       status: true,
       paymentIntentStatus: true,
+      stripePaymentIntentId: true,
       firstName: true,
       lastName: true,
       total: true,
@@ -102,7 +104,7 @@ export async function getOrderForConfirmation(
   // Previously both mapped to 'paid' — telling refunded buyers their order
   // was paid. This was a live defect once Task 7 enabled auto-refund on
   // late success (4 Sep 2026 critique finding).
-  const band: OrderBand =
+  let band: OrderBand =
     order.status === 'REFUNDED' || order.status === 'PARTIALLY_REFUNDED'
       ? 'refunded'
       : order.status === 'PAID'
@@ -115,6 +117,42 @@ export async function getOrderForConfirmation(
             : (order.holdExpiresAt?.getTime() ?? 0) <= now
               ? 'expired'
               : 'holding'
+
+  // Fix for the post-redirect race: the Stripe return_url resolves faster
+  // than the webhook, so the stored paymentIntentStatus may still read
+  // 'requires_confirmation' while the PI has already succeeded. Ask Stripe
+  // for the real live status and derive the band from that.
+  //
+  // Guard is structural: ONLY call Stripe when status is PENDING and a PI
+  // exists. Never on PAID, REFUNDED, CANCELLED, EXPIRED, and never when
+  // there is no PI. Do not hoist this call — it would run for every page
+  // load, not just the narrow race window where it is needed.
+  if (order.status === 'PENDING' && order.stripePaymentIntentId != null) {
+    try {
+      const pi = await stripe.paymentIntents.retrieve(order.stripePaymentIntentId)
+      if (
+        pi.status === 'succeeded' ||
+        pi.status === 'processing' ||
+        pi.status === 'requires_action' ||
+        pi.status === 'requires_capture'
+      ) {
+        // Payment taken or async method in flight — show the polling UI so
+        // the buyer waits for the webhook rather than clicking Pay again.
+        band = 'processing'
+      } else if (pi.status === 'canceled') {
+        band = 'cancelled'
+      }
+      // requires_payment_method / requires_confirmation: buyer has not yet
+      // paid or abandoned without entering card details. Keep the stored-
+      // mirror band (which already handles holdExpiresAt correctly) so they
+      // can retry or see the hold-expired message.
+    } catch (err) {
+      // Stripe unavailable (network, rate limit, etc.). Fall back to the
+      // stored mirror rather than failing the page — a buyer must never see
+      // an error page because Stripe was slow.
+      console.error('[order-lookup] Stripe paymentIntents.retrieve failed, using stored mirror', err)
+    }
+  }
 
   // attendeeNames is deliberately never selected: it is PII the confirmation
   // flow has no need to display, token or not.

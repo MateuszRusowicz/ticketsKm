@@ -33,7 +33,10 @@
     "doors": "Otwarcie drzwi",
     "price": "Cena biletu",
     "buy": "Kup bilety",
-    "quantity": "Liczba biletów"
+    "quantity": "Liczba biletów",
+    "currencySelect": "Waluta płatności",
+    "payingIn": "Płacisz w {currency} m.in.: {methods}",
+    "methodCard": "karta"
   },
   "checkout": {
     "heading": "Dane do zamówienia",
