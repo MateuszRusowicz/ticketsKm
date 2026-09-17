@@ -33,7 +33,10 @@
     "doors": "Einlass",
     "price": "Ticketpreis",
     "buy": "Tickets kaufen",
-    "quantity": "Anzahl der Tickets"
+    "quantity": "Anzahl der Tickets",
+    "currencySelect": "Zahlungswährung",
+    "payingIn": "Zahlung in {currency}, in der Regel: {methods}",
+    "methodCard": "Karte"
   },
   "checkout": {
     "heading": "Bestelldaten",

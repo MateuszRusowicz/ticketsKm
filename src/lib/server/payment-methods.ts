@@ -1,6 +1,7 @@
 import 'server-only'
 import { db } from './db'
 import { env } from './env'
+import { basePaymentMethodsFor } from '@/lib/shared/payment-methods'
 
 const IN_FLIGHT_PI_STATUSES = [
   'processing',
@@ -12,8 +13,9 @@ const IN_FLIGHT_PI_STATUSES = [
 /**
  * Server-side allowed-payment-methods computation.
  *
- * Enforced via `payment_method_types` — `automatic_payment_methods` cannot;
- * it has no per-order block-list. Stripe refuses confirmation for any method
+ * Starts from the base list in `@/lib/shared/payment-methods` and applies
+ * guardrails on top. Enforced via `payment_method_types` — `automatic_payment_methods`
+ * cannot; it has no per-order block-list. Stripe refuses confirmation for any method
  * not in the allow-list, so this is a real guardrail, not client-side hiding.
  *
  * SEPA (EUR-only) has three guardrails:
@@ -21,6 +23,10 @@ const IN_FLIGHT_PI_STATUSES = [
  *  2. Near-sellout hide (SELLOUT_HIDE_THRESHOLD, default 20%)
  *  3. Small-concert floor guard: if floor(capacity * share) < 1, SEPA is allowed
  *     unconditionally so a 5-seat concert doesn't disable SEPA at count 0.
+ *
+ * PayPal (EUR-only): NOT subject to SEPA guardrails. PayPal settles in seconds
+ * like a card; those limits exist because SEPA holds seats for days. Owner decision,
+ * 7 Sep 2026.
  */
 export async function computeAllowedPaymentMethods(orderId: string): Promise<string[]> {
   const order = await db.order.findUniqueOrThrow({
@@ -40,15 +46,10 @@ export async function computeAllowedPaymentMethods(orderId: string): Promise<str
     },
   })
 
-  const methods = new Set<string>(['card'])
+  // Start from the shared base list — single source of truth with the BuyBox display.
+  const methods = new Set<string>(basePaymentMethodsFor(order.currency as 'PLN' | 'EUR'))
 
-  if (order.currency === 'PLN') {
-    methods.add('blik')
-    methods.add('p24')
-  } else {
-    // EUR
-    methods.add('klarna')
-
+  if (order.currency === 'EUR') {
     const eventId = order.items[0].ticketType.eventId
     const capacity = order.items[0].ticketType.event.capacity
 
@@ -80,7 +81,8 @@ export async function computeAllowedPaymentMethods(orderId: string): Promise<str
       sepaBlocked = sepaHolds >= sepaCap
     }
 
-    if (!nearSellout && !sepaBlocked) methods.add('sepa_debit')
+    // Only SEPA is affected by guardrails. PayPal stays in the set regardless.
+    if (nearSellout || sepaBlocked) methods.delete('sepa_debit')
   }
 
   return [...methods]

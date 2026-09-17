@@ -79,6 +79,24 @@ describe('seed', () => {
     for (const a of admins) expect(a.email).toBe(a.email.toLowerCase())
   })
 
+  it('seeds content but no admin accounts when SEED_SKIP_ADMINS=1', async () => {
+    // The seed's two admin accounts share the password DevPassword123!, which
+    // is published in this repository. Seeding content onto a database behind
+    // a public URL is fine; seeding those accounts there is not. Without this
+    // flag the only options are "no demo data" or "public admin login".
+    await db.$executeRawUnsafe('TRUNCATE TABLE "AdminSession", "AdminUser" RESTART IDENTITY CASCADE')
+
+    execSync('pnpm exec tsx prisma/seed.ts', {
+      stdio: 'pipe',
+      env: { ...process.env, SEED_SKIP_ADMINS: '1' },
+    })
+
+    expect(await db.adminUser.count()).toBe(0)
+    // Content still lands — the flag must skip the accounts, not the seed.
+    expect(await db.event.count()).toBe(11)
+    expect(await db.venue.count()).toBe(2)
+  })
+
   it('keeps heldCount and the held order consistent when re-seeded after a sweep', async () => {
     // The bug this pins: heldCount was set unconditionally while the order
     // upsert had `update: {}`, so re-seeding a database whose sweep had

@@ -33,7 +33,10 @@
     "doors": "Doors open",
     "price": "Ticket price",
     "buy": "Buy tickets",
-    "quantity": "Number of tickets"
+    "quantity": "Number of tickets",
+    "currencySelect": "Payment currency",
+    "payingIn": "Paying in {currency}, typically: {methods}",
+    "methodCard": "card"
   },
   "checkout": {
     "heading": "Order details",

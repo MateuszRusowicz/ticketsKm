@@ -164,14 +164,26 @@ pnpm dev                          # :3000
 pnpm test                         # vitest against km_test
 pnpm typecheck                    # next typegen && tsc --noEmit
 pnpm lint
-pnpm db:seed                      # upserts; safe to re-run
+pnpm db:seed                      # upserts; safe to re-run; localhost only
+pnpm db:seed:remote                # content only, no admins; needs .env.neon-dev
 pnpm admin:create <email> <name> [ADMIN|SCANNER]
 pnpm admin:reset-password <email>
 docker compose up -d              # Postgres 16; km_dev + km_test
 ```
 
-**Never run `pnpm db:seed` against production** — the seed password is published
-in this repository.
+**`pnpm db:seed` refuses to run against a non-local database** (7 Sep 2026).
+Its two admin accounts share `DevPassword123!`, which is published here, so
+seeding them onto anything with a public URL is an open admin login. The rule
+used to be documentation; it is now enforced in `src/lib/shared/seed-guard.ts`
+and the seed throws before writing a single row. To put dummy content on a
+remote database, pass `SEED_SKIP_ADMINS=1` (or use `pnpm db:seed:remote`) and
+create real accounts with `pnpm admin:create`.
+
+**`.env.neon` points at the Neon `production` branch**, not `development` —
+it holds the two real admin accounts and no content. The database the deployed
+site actually reads until launch is Neon `development`, whose connection string
+lives only in Vercel's environment variables. Copy it into `.env.neon-dev`
+(git-ignored) if you need to reach it from a script.
 
 ---
 

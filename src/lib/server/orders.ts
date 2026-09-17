@@ -721,7 +721,7 @@ export function extractPaymentMethodType(pi: Stripe.PaymentIntent): string | nul
 export async function recordPaymentAttempt(
   orderId: string,
   pi: Stripe.PaymentIntent,
-  meta: { reason: 'processing' | 'requires_action' | 'declined' },
+  meta: { reason: 'processing' | 'requires_action' | 'declined' | 'succeeded' },
 ): Promise<void> {
   const paymentMethodType = extractPaymentMethodType(pi)
   await db.order.update({

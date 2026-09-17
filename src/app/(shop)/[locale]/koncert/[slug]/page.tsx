@@ -105,6 +105,7 @@ export default async function ConcertPage({ params }: Props) {
             locale={locale}
             maxPerOrder={event.maxPerOrder}
             available={event.available}
+            currency={currency}
             labels={{ quantity: t('quantity'), buy: t('buy') }}
           />
         ) : (

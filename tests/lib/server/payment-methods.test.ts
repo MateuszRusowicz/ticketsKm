@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/lib/server/db'
 import { computeAllowedPaymentMethods } from '@/lib/server/payment-methods'
+import { basePaymentMethodsFor } from '@/lib/shared/payment-methods'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -232,5 +233,67 @@ describe('computeAllowedPaymentMethods', () => {
     await expect(
       computeAllowedPaymentMethods('00000000-0000-0000-0000-000000000000'),
     ).rejects.toThrow()
+  })
+
+  // Case 9 — EUR plain order includes paypal
+  it('includes paypal for a plain EUR order', async () => {
+    const { ticketTypeId } = await makeConcert({ capacity: 100 })
+    const orderId = await makeOrder(ticketTypeId, { currency: 'EUR' })
+
+    const methods = await computeAllowedPaymentMethods(orderId)
+
+    expect(methods).toContain('paypal')
+    expect(methods).not.toContain('blik')
+    expect(methods).not.toContain('p24')
+  })
+
+  // Case 10 — EUR, near-sellout: sepa_debit dropped but paypal stays
+  // This is the critical regression test: the guardrail must not widen to paypal.
+  it('includes paypal for a EUR order on a near-sold-out concert', async () => {
+    // capacity=100, threshold=0.20, available=15 → near-sellout → SEPA hidden
+    const { ticketTypeId } = await makeConcert({ capacity: 100, soldCount: 85 })
+    const orderId = await makeOrder(ticketTypeId, { currency: 'EUR' })
+
+    const methods = await computeAllowedPaymentMethods(orderId)
+
+    expect(methods).toContain('paypal')
+    expect(methods).not.toContain('sepa_debit')
+  })
+
+  // Case 11 — EUR, SEPA cap hit: sepa_debit dropped but paypal stays
+  // Same regression test for the concurrent-hold guardrail.
+  it('includes paypal for a EUR order when the SEPA cap is reached', async () => {
+    // capacity=100, cap=10; 10 in-flight SEPA orders hit the cap
+    const { ticketTypeId } = await makeConcert({ capacity: 100 })
+    await makeSepaInFlightOrders(ticketTypeId, 10, 'processing')
+    const orderId = await makeOrder(ticketTypeId, { currency: 'EUR' })
+
+    const methods = await computeAllowedPaymentMethods(orderId)
+
+    expect(methods).toContain('paypal')
+    expect(methods).not.toContain('sepa_debit')
+  })
+
+  // Case 12 — drift check: server output for a plain EUR order matches the shared base list.
+  // If basePaymentMethodsFor and computeAllowedPaymentMethods diverge (duplicate lists),
+  // this test will catch it when both have no guardrails active.
+  it('server EUR output for a plain order equals the shared base list', async () => {
+    const { ticketTypeId } = await makeConcert({ capacity: 100 })
+    const orderId = await makeOrder(ticketTypeId, { currency: 'EUR' })
+
+    const serverMethods = await computeAllowedPaymentMethods(orderId)
+    const sharedBase = basePaymentMethodsFor('EUR')
+
+    expect([...serverMethods].sort()).toEqual([...sharedBase].sort())
+  })
+
+  // Case 13 — PLN: no paypal
+  it('does not include paypal for PLN orders', async () => {
+    const { ticketTypeId } = await makeConcert({ capacity: 100 })
+    const orderId = await makeOrder(ticketTypeId, { currency: 'PLN' })
+
+    const methods = await computeAllowedPaymentMethods(orderId)
+
+    expect(methods).not.toContain('paypal')
   })
 })
