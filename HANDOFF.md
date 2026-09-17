@@ -59,7 +59,7 @@ transcript. That last one has been violated once already — see Risks.
 | What | Where it lives |
 |---|---|
 | Production admin passwords | the festival password manager |
-| Neon connection strings | Vercel environment variables, and `.env.neon` locally |
+| Neon connection strings | Vercel environment variables. Locally, `.env.neon` is the **`production`** branch (verified 7 Sep 2026 — it holds the two real admin accounts and no content). The `development` branch string, which is what the deployed site reads until launch, exists **only** in Vercel; copy it to `.env.neon-dev` if a script needs it |
 | `SESSION_SECRET` (prod, preview) | Vercel environment variables — different value per environment |
 | Local dev credentials | `.env`, from `.env.example` |
 
@@ -81,8 +81,12 @@ pnpm exec dotenv -e .env.neon -- \
 This sets a new password, clears any lockout, and signs out that account's
 existing sessions. Add further staff with `pnpm admin:create`.
 
-**Never run `pnpm db:seed` against production** — the seed creates accounts with
-the published password `DevPassword123!`.
+**`pnpm db:seed` now refuses to run against any non-local database.** Its two
+accounts share the published password `DevPassword123!`, so this used to be a
+rule you had to remember; since 7 Sep 2026 it is enforced in
+`src/lib/shared/seed-guard.ts` and the seed throws before writing anything.
+Content-only seeding of a remote database is `SEED_SKIP_ADMINS=1`, or
+`pnpm db:seed:remote` (which reads `.env.neon-dev`).
 
 ---
 
@@ -105,7 +109,22 @@ migration on any feature branch reaches the live site too.
 
 **Never seed admin accounts, even on `development`** — the seed password is
 published in this repository and the site is on a public URL. Seed content;
-create accounts with `pnpm admin:create`.
+create accounts with `pnpm admin:create`. The seed enforces this itself now: it
+refuses a non-local target unless `SEED_SKIP_ADMINS=1` says content-only.
+
+**As of 7 Sep 2026 Neon `development` holds no content at all** — 0 venues,
+0 concerts, 0 ticket types — which is why the deployed shop shows "no concerts
+on sale". The demo walkthrough cannot run until it is seeded:
+
+```bash
+# 1. Vercel → Settings → Environment Variables → reveal DATABASE_URL and
+#    DIRECT_URL (Production) and paste both into .env.neon-dev — git-ignored,
+#    and it must live inside the repo, never /tmp.
+# 2. Content only, no admin accounts:
+pnpm db:seed:remote
+# 3. A real admin account, with a password you choose:
+pnpm exec dotenv -e .env.neon-dev -- pnpm exec tsx scripts/create-admin.ts <email> <name> ADMIN
+```
 
 `bilety.krzyzowa-music.eu` is **not connected yet** — that is Plan 02, Task 7.
 
@@ -206,22 +225,30 @@ stdout. Response bodies never reach logs — the grep must target the stderr str
 
 ```
 SWEEP-PRIMARY expired=<e> released=<r> failed=<f>
-SWEEP-ASYNC   expired=<e> released=<r> failed=<f>
-RECONCILE     alerts=<n> failed=<f> deadlettered=<d>
+SWEEP-ASYNC expired=<e> released=<r> failed=<f>
+RECONCILE recovered=<r> stuckWebhooks=<w> ticketGaps=<g> alerts=<a>
 ```
 
 In the Vercel dashboard: **Project → Logs → Runtime** (filter by Function if
-needed). Search for `alerts=[1-9]`, `failed=[1-9]`, or `deadlettered=[1-9]`.
-Any non-zero value warrants investigation.
+needed). Search for `failed=[1-9]`, `alerts=[1-9]`, `stuckWebhooks=[1-9]` or
+`ticketGaps=[1-9]`. Any non-zero value warrants investigation. A cron returning
+**207** instead of 200 means at least one order failed inside an otherwise
+successful sweep.
 
 **Where the crons run.** Three routes, all in `vercel.json`, all Vercel Pro
 (5-minute schedule requires Pro — Hobby silently downgrades to daily):
 
 | Route | Schedule | Does |
 |---|---|---|
-| `/api/cron/sweep-primary` | Every 5 min | Expires holds where PI is not in-flight; no Stripe call |
-| `/api/cron/sweep-async` | Every 5 min | Expires async-method holds past their timeout (6 h / 5 days SEPA) |
-| `/api/cron/reconcile` | Every 15 min | Finds PAID orders missing tickets, stuck refunds, un-reprocessed webhook events |
+| `/api/cron/release-holds` | Every 5 min | Expires holds where PI is not in-flight; no Stripe call |
+| `/api/cron/async-release-holds` | Every 30 min | Expires async-method holds past their timeout (6 h / 5 days SEPA) |
+| `/api/cron/reconcile` | Every 10 min | Finds PAID orders missing tickets, stuck refunds, un-reprocessed webhook events |
+
+*(Corrected 7 Sep 2026 against `vercel.json`, `src/app/api/cron/*/route.ts` and
+`src/lib/server/reconcile.ts:164`. The earlier table named `sweep-primary` /
+`sweep-async` — routes that do not exist — gave the wrong schedules for two of
+the three, and printed a `RECONCILE` format with `deadlettered=`, a field the
+code never emits, so that grep could never have matched.)*
 
 All cron routes require the `Authorization: Bearer <CRON_SECRET>` header.
 Vercel sets this automatically when the cron fires; the value in production must

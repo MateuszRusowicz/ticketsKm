@@ -26,6 +26,14 @@ paste-able prompt.
 | 09 | [Open questions](09-open-questions.md) | Blocking and non-blocking decisions still needed |
 | 10 | [Design system](10-design-system.md) | Colour, typography, spacing, components, Stripe theming |
 
+## Deploying payments
+
+[`DEPLOY-PLAN-05.md`](DEPLOY-PLAN-05.md) is the runbook for Plan 05 Task 15 —
+the Stripe dashboard, the Vercel environment, and the six-flow manual
+walkthrough. **Part 3 runs before every release that touches checkout**: the
+suite has no DOM, so forms, the Payment Element and the currency dropdown have
+no automated coverage at all.
+
 ## Testing by hand
 
 [`03-manual-test.md`](03-manual-test.md) is the click-through checklist for the

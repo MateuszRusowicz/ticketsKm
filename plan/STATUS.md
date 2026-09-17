@@ -1,4 +1,4 @@
-# Status — 4 September 2026
+# Status — 17 September 2026
 
 Where the project stands, for whoever picks it up next. Update this at the end
 of a working session; it is the fastest way back into context.
@@ -99,9 +99,11 @@ scanner, promo codes and refunds. They stay in Plans 05–07.
 ### Plan 05 execution started 4 Sep 2026 — Tasks 0–14 done
 
 On branch **`feat/plan-05-payments`** (cut from `development`; Plan 04's branch
-is merged and deleted). Committed by the owner in two batches — `0025785`
-(Tasks 0–4) and `0f5087d` (Tasks 5–10). **Tasks 11–14 are in the working tree,
-not yet committed.**
+is merged and deleted). Committed by the owner in four batches — `0025785`
+(Tasks 0–4), `0f5087d` (Tasks 5–10), `5e0b187` (Tasks 11–14) and `96260fb`
+(currency dropdown, PayPal for EUR, post-redirect band fix). Only the first
+three reached `development` (PR #5); `96260fb` did not — see below. The seed
+guard and runbook from the evening of 7 Sep are still uncommitted.
 
 **Verified 5 Sep 2026 the way CI verifies:** `km_test` reset to empty, then the
 suite run **once** — `45 files, 403/403, exit 0`. This matters because CI uses a
@@ -127,9 +129,75 @@ reproduction simply failed to trigger it.
 | 12 | Payment Element on the order page — islands, i18n, `processing`/`refunded` bands | ✅ 13 new tests (6+6+1) |
 | 13 | Cron routes + `vercel.json` | ✅ 9 new tests |
 | 14 | Reconciliation cron — three narrow states | ✅ 11 new tests (7+4) |
-| **15** | **Vercel deployment** | **next — owner action required** |
+| 15 | Vercel deployment | ✅ **done 7 Sep 2026** by the owner, verified live (below). Runbook: [`DEPLOY-PLAN-05.md`](DEPLOY-PLAN-05.md) |
+| **16** | **Verification, walkthrough, STATUS** | steps 2–6 done 7 Sep. **Step 7, the six-flow walkthrough, is blocked — the demo database is empty (below).** |
 
-**Suite is now 411 tests** across 46 files, green from a clean tree. `pnpm typecheck`, `pnpm lint`, and `pnpm build` all EXIT 0.
+### Task 15 verified live, 7 Sep 2026
+
+Checked against `https://tickets-km.vercel.app`, not taken on report:
+
+| Check | Result |
+|---|---|
+| `GET /api/cron/release-holds` | **401** `unauthorized` — `CRON_SECRET` is set and the sweeps are not public |
+| `POST /api/webhooks/stripe` with no signature | **400** `missing stripe-signature` |
+| `GET /pl` | **200** |
+
+The 401 is the informative one: those routes only exist in the Plan 05 build, so
+a 401 proves the new code shipped *and* that the env vars parsed — had any of
+the five been missing, the build would have died at page-data collection and the
+old deployment would still be serving.
+
+### Also blocking the demo: the live site lacks the 7 Sep fixes (found 17 Sep 2026)
+
+Vercel deploys `development`, and `origin/development` is PR #5 (merged 6 Sep),
+which stops at Task 14. **Commit `96260fb` was never merged**, so the live site
+still has the four defects the 7 Sep walkthrough found and fixed: the form wipes
+on a bad e-mail, the Pay button reappears after paying, `paymentMethodType`
+stays null for cards, and there is no currency dropdown or PayPal. A
+walkthrough on the live URL today would rediscover all four. `96260fb` carries
+no migration, so merging it cannot touch the shared Neon database.
+
+Also still uncommitted on `feat/plan-05-payments`: the seed guard, the deploy
+runbook and the doc corrections from the evening of 7 Sep (gate green then;
+tree unchanged since).
+
+### Blocked: the demo database has no content
+
+The deployed shop renders **"W tej chwili nie ma koncertów w sprzedaży"**. It is
+right to: Neon `development` — the database every non-production deploy reads
+until launch — holds **0 venues, 0 concerts, 0 ticket types, 0 orders**. Plan 02
+Task 9 assumed dummy data had been seeded there; it never was.
+
+Nothing can be bought, so Task 16 Step 7 cannot start. The fix is one command
+once the connection string is in place — see **Environments** in
+[`/HANDOFF.md`](../HANDOFF.md), which now carries the exact sequence.
+
+**A near miss found on the way there.** `.env.neon` points at the Neon
+**`production`** branch, which `HANDOFF.md` never said. The natural way to fill
+the empty demo site — `dotenv -e .env.neon -- pnpm db:seed` — would have written
+11 dummy concerts and two admin accounts with the **published** password
+`DevPassword123!` into production. That was forbidden in two documents and
+enforced by nothing. It is now enforced: `src/lib/shared/seed-guard.ts` refuses
+admin seeding against any non-local database, throwing before the first write;
+`SEED_SKIP_ADMINS=1` (or `pnpm db:seed:remote`) is the content-only path. 11 new
+tests, the seed test confirmed failing first.
+
+**Suite is 427 tests across 47 files**, verified from a clean tree 7 Sep 2026
+(`rm -rf .next next-env.d.ts tsconfig.tsbuildinfo` first): `pnpm typecheck &&
+pnpm lint && pnpm test && pnpm build` exited 0, and a second `pnpm test` on the
+now-warm database was 427/427 again. *(The earlier "411 tests / 46 files" figure
+predated the currency-dropdown commit `96260fb`.)* The `sweep-holds` P2025 flake
+**did not reproduce** on that warm second run — still unresolved, still not
+closed; one more pass that failed to trigger it.
+
+**`plan/DEPLOY-PLAN-05.md` was written 7 Sep 2026.** `HANDOFF.md` had referenced
+it twice since 6 Sep, but it existed in no commit — the owner was being pointed
+at a missing document for the one remaining task. Writing it against the
+repository also caught `HANDOFF.md`'s cron table naming two routes that do not
+exist (`sweep-primary`, `sweep-async`), two wrong schedules, and a `RECONCILE`
+log format whose fields the code never emits — so the prescribed
+`deadlettered=[1-9]` and `failed=[1-9]` alert greps could never have matched.
+Both files corrected; see the plan's Findings log.
 
 **New files (Tasks 12–14):**
 - `src/lib/server/reconcile.ts` — reconciliation logic (stuck refunds, stuck webhooks, ticket gaps)
@@ -198,11 +266,11 @@ wszystkie są realne.
 | # | Rzecz | Status | Gdzie |
 |---|---|---|---|
 | 1 | **Formularz zamówienia czyścił się przy błędzie walidacji.** Wpisanie złego e-maila kasowało wszystkie pola. Przyczyna: `SubmitState` zwracał wyłącznie błędy, a `<form action={…}>` resetuje niekontrolowane pola po powrocie akcji. **Naprawione 7 Sep 2026:** akcja zwraca `values: Partial<CheckoutInput>` przy każdym błędzie; `CheckoutForm` wywołuje `reset(submittedValues)` w `useEffect` po zmianie stanu. | **gotowe** | `CheckoutForm.tsx`, `zamowienie/actions.ts` |
-| 2 | **Link (portfel Stripe'a) przeszkadza przy jednorazowym zakupie.** Napis „powrót do płatności poza usługą Link" jest niezrozumiały, a powrót do listy metod ukryty pod ikoną trzech kropek. `link` **nie jest** w naszym `payment_method_types` — Element pokazuje go, bo Link jest włączony na koncie. Wyłączenie to przełącznik w Dashboardzie, nie zmiana w kodzie. | do zrobienia (Dashboard) | Stripe → Settings → Payment methods → Link |
+| 2 | **Link (portfel Stripe'a) przeszkadza przy jednorazowym zakupie.** Napis „powrót do płatności poza usługą Link" jest niezrozumiały, a powrót do listy metod ukryty pod ikoną trzech kropek. `link` **nie jest** w naszym `payment_method_types` — Element pokazuje go, bo Link jest włączony na koncie. Wyłączenie to przełącznik w Dashboardzie, nie zmiana w kodzie. | do zrobienia (Dashboard) — kroki w [`DEPLOY-PLAN-05.md`](DEPLOY-PLAN-05.md) Part 1.2 | Stripe → Settings → Payment methods → Link |
 | 3 | **Brak powiadomień o zdarzeniach.** Stan komunikuje tylko sekcja strony (`holding` / `processing` / `paid` / `refunded`); nie ma toastów przy anulowaniu, opłaceniu ani błędzie. Świadomie poza zakresem Planu 05. | **Plan 06/07** | — |
 
 | 4 | **Po zapłacie karta znika, ale zostaje przycisk „Zapłać".** Buyer wraca z `return_url`, widzi podsumowanie z aktywnym przyciskiem, klika — dostaje „bilety już opłacone". **To wyścig, nie literówka:** przekierowanie ze Stripe'a wraca szybciej niż webhook, więc w tym oknie `Order.status` to wciąż `PENDING`, a `paymentIntentStatus` to `requires_confirmation`. Pasmo liczone w `order-lookup.ts:105` sprawdza tylko `['processing','requires_action','requires_capture']`, więc spada do `holding` i renderuje przycisk. | **gotowe** — naprawione 7 Sep 2026: `getOrderForConfirmation` odpytuje Stripe o rzeczywisty status PI gdy zamówienie jest `PENDING` z PI; `succeeded` → pasmo `processing` (polling island). Zakres: `order-lookup.ts`, nowy plik testowy `tests/lib/server/order-lookup-stripe.test.ts`. | `order-lookup.ts`, strona zamówienia |
-| 5 | **PayPal włączony w Dashboardzie nie zadziała.** Wysyłamy jawną listę `payment_method_types`, która nadpisuje konfigurację konta. Wymaga `methods.add('paypal')` w `payment-methods.ts` (gałąź EUR) — plus decyzji, czy PayPal podlega jakimś ograniczeniom jak SEPA. | decyzja właściciela | `payment-methods.ts` |
+| 5 | **PayPal włączony w Dashboardzie nie zadziała.** Wysyłamy jawną listę `payment_method_types`, która nadpisuje konfigurację konta. Wymaga `methods.add('paypal')` w `payment-methods.ts` (gałąź EUR) — plus decyzji, czy PayPal podlega jakimś ograniczeniom jak SEPA. | **gotowe** — decyzja podjęta 7 Sep 2026 (PayPal tylko EUR, bez ograniczeń SEPA); `paypal` dodany do gałęzi EUR w `basePaymentMethodsFor` (`src/lib/shared/payment-methods.ts:23`), pokryty testami. Metoda musi być też włączona w Dashboardzie — [`DEPLOY-PLAN-05.md`](DEPLOY-PLAN-05.md) Part 1.3. | `payment-methods.ts` |
 
 **Nie naprawiać przez dopisanie `requires_confirmation` do listy pasma `processing`.** Ta wartość jest zapisywana przy tworzeniu PaymentIntentu, czyli przy kliknięciu „Zapłać" — ale kupujący może wtedy porzucić płatność bez podania karty. Pokazywanie mu „przetwarzamy" w nieskończoność odebrałoby mu możliwość ponowienia.
 

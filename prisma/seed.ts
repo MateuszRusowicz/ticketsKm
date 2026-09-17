@@ -4,6 +4,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 // where lib/server/password.ts's `import 'server-only'` would throw.
 import { hash } from '@node-rs/argon2'
 import { ARGON2_OPTIONS } from '../src/lib/shared/password-options'
+import { adminSeedDecision } from '../src/lib/shared/seed-guard'
 
 const db = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL! }),
@@ -15,6 +16,22 @@ const SEED_ORDER_REFERENCE = 'KM-0000-000001'
 const HELD_SEED_QUANTITY = 5
 
 async function main() {
+  // Decided FIRST, before a single row is written. The seed's two admin
+  // accounts share the password DevPassword123!, which is published in this
+  // repository: harmless on a local Docker database, an open admin login on
+  // anything reachable from the internet. So seeding them is allowed only
+  // against localhost, and a remote target must pass SEED_SKIP_ADMINS=1 to say
+  // "content only" — content is safe to seed anywhere, it is just the logins
+  // that must not be public. Failing here rather than at the end means a
+  // mistyped target costs an error message, not a database full of rows.
+  // See src/lib/shared/seed-guard.ts.
+  const decision = adminSeedDecision({
+    connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL,
+    skipAdmins: process.env.SEED_SKIP_ADMINS === '1',
+  })
+  if (decision.action === 'refuse') throw new Error(decision.reason)
+  const skipAdmins = decision.action === 'skip'
+
   const swidnica = await db.venue.upsert({
     where: { id: '00000000-0000-0000-0000-000000000001' },
     update: {},
@@ -314,25 +331,29 @@ async function main() {
     },
   })
 
-  const password = await hash('DevPassword123!', ARGON2_OPTIONS)
+  if (!skipAdmins) {
+    const password = await hash('DevPassword123!', ARGON2_OPTIONS)
 
-  await db.adminUser.upsert({
-    where: { email: 'admin@krzyzowa-music.eu' },
-    update: {},
-    create: { email: 'admin@krzyzowa-music.eu', passwordHash: password, name: 'Administrator', role: 'ADMIN' },
-  })
+    await db.adminUser.upsert({
+      where: { email: 'admin@krzyzowa-music.eu' },
+      update: {},
+      create: { email: 'admin@krzyzowa-music.eu', passwordHash: password, name: 'Administrator', role: 'ADMIN' },
+    })
 
-  await db.adminUser.upsert({
-    where: { email: 'skaner@krzyzowa-music.eu' },
-    update: {},
-    create: { email: 'skaner@krzyzowa-music.eu', passwordHash: password, name: 'Obsługa wejścia', role: 'SCANNER' },
-  })
+    await db.adminUser.upsert({
+      where: { email: 'skaner@krzyzowa-music.eu' },
+      update: {},
+      create: { email: 'skaner@krzyzowa-music.eu', passwordHash: password, name: 'Obsługa wejścia', role: 'SCANNER' },
+    })
+  }
 
   // A live total, not a count of what this run inserted: a dev database may
   // hold orders created by hand through the app.
   const orderCount = await db.order.count()
   console.log(
-    `Seeded 2 venues, ${concerts.length} concerts, 2 admin accounts. Orders in database: ${orderCount}.`,
+    `Seeded 2 venues, ${concerts.length} concerts, ${
+      skipAdmins ? 'NO admin accounts (SEED_SKIP_ADMINS=1)' : '2 admin accounts'
+    }. Orders in database: ${orderCount}.`,
   )
 }
 
