@@ -15,7 +15,7 @@ export function CancelOrderButton({ reference, accessToken, label, notFoundLabel
   const failed = 'errors' in state
 
   return (
-    <form action={action} className="mt-8">
+    <form action={action} className="mt-4">
       <input type="hidden" name="reference" value={reference} />
       <input type="hidden" name="accessToken" value={accessToken} />
 
@@ -25,7 +25,7 @@ export function CancelOrderButton({ reference, accessToken, label, notFoundLabel
         </p>
       )}
 
-      <button type="submit" className="min-h-[44px] border border-border px-4 py-2 underline">
+      <button type="submit" className="btn btn-secondary w-full sm:w-auto">
         {label}
       </button>
     </form>

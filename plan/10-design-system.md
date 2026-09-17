@@ -9,6 +9,58 @@ The guidelines below were set by the product owner; the original Polish text is
 preserved verbatim in the appendix. Where this document adds to them, it is
 marked as such and the reason is given.
 
+## Revision — 17 September 2026: aligned with krzyzowa-music.eu
+
+The shop now follows the festival's main site rather than a separate
+"diplomatic print" look. **Where this section disagrees with the sections below,
+this section wins; `src/app/globals.css` is the source of truth for values.**
+
+| | Before | Now | Why |
+|---|---|---|---|
+| Accent | `#C4122D` | **`#CC1216`** | the logo's own red, sampled from the logo file. A near-miss red beside the logo reads as a mistake. 5.73:1 on white — still AA for text and for white-on-red buttons |
+| Accent hover | `#A00F25` | `#A30E11` | darker step of the new accent |
+| Headings | Merriweather 700 | **Jost 500** (`--font-display`) | the main site sets headings in Futura. Futura is commercial and licensed to the Wix site only; Jost is an open-licence face drawn after it |
+| Long text | Helvetica Neue | **EB Garamond** (`--font-serif`, `.prose-serif`) | the exact serif the main site uses — descriptions, taglines, legal prose |
+| Interface | Helvetica Neue | Helvetica Neue (unchanged) | labels, fields, numbers, small print |
+| Surface | `#F8F9FA` | `#F7F6F4` | a warm paper tone instead of a cool grey, next to red and serif type |
+| Secondary text | `#4A4A4A` | `#555454` | the main site's dark grey family; 7.55:1 on white, 6.99:1 on surface |
+| Page titles | black | **red** | as on the main site; list titles stay black so a programme is not a wall of red |
+
+Added, taken from the main site:
+
+- **Header** with the KM logo and the festival's trilingual motto ("Muzyka dla
+  Europy. / Music for Europe. / Musik aus Kreisau. Für Europa."), quoted verbatim
+  and not translated. Navigation in light Jost, active item red with a 2px rule
+  (not colour alone).
+- **Red band** (`.brand-band`) — white type on red, as over the main site's
+  hero photographs.
+- **Buttons** keep the §5 shape and match the main site's flat red "Infos &
+  Tickets".
+- **Date tile** instead of the grey image placeholder: concerts have no images
+  yet, and the date is what a buyer scans for first.
+- **Favicon and app icons** from the logo.
+
+Fixed at the same time, because they contradicted this document:
+
+- `--color-danger`, `--color-error` and `--color-focus` were specified here but
+  missing from `@theme`, so every `text-danger` / `border-error` in the checkout
+  generated nothing and validation errors had no colour.
+- Form fields used `border-border` (`#E0E0E0`, 1.3:1) — exactly what §2
+  forbids. They now use `.field` with `--color-border-input`.
+- The §6 Stripe Appearance theme had never been applied; it is now, with the new
+  accent.
+- Element defaults (`h1`, `p`, …) were **unlayered** CSS, which in Tailwind 4
+  beats every utility — so `text-sm`, `text-3xl` etc. on paragraphs were
+  silently ignored. They now live in `@layer base`.
+
+Contrast re-audited for every changed pair (script output, 17 Sep): all pass —
+see the table in §2 for the method.
+
+The logo is a 915 px PNG from the Wix media library. **A vector logo is still
+needed before launch** (already on `HANDOFF.md`'s list): it is used at up to
+96 px, where the PNG is fine, but the PDF ticket in Plan 05's second half will
+want a vector.
+
 ---
 
 ## 1. Tokens

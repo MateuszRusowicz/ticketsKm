@@ -20,9 +20,9 @@ export function LegalPage({
   sections: { heading: string; body: ReactNode }[]
 }) {
   return (
-    <main className="mx-auto max-w-[65ch] px-8 py-12">
-      <h1 className="text-3xl">{title}</h1>
-      <p className="mt-2 text-text-secondary">{intro}</p>
+    <main className="mx-auto max-w-[65ch] px-4 pt-12 sm:px-8">
+      <h1 className="text-accent">{title}</h1>
+      <p className="prose-serif mt-4 text-text-secondary">{intro}</p>
 
       <p
         role="note"
@@ -33,10 +33,10 @@ export function LegalPage({
 
       {sections.map((section, i) => (
         <section key={section.heading} className="mt-8">
-          <h2 className="text-xl">
+          <h2>
             {i + 1}. {section.heading}
           </h2>
-          <p className="mt-2 hyphens-auto">{section.body}</p>
+          <p className="prose-serif mt-3 hyphens-auto">{section.body}</p>
         </section>
       ))}
     </main>

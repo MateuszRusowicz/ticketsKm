@@ -31,7 +31,7 @@ export function CurrencySwitcher({ active, label }: { active: Currency; label: s
   }
 
   return (
-    <nav aria-label={label} className="flex gap-1">
+    <nav aria-label={label} className="flex gap-0.5">
       {CURRENCIES.map((c) => (
         <button
           key={c}
@@ -39,8 +39,10 @@ export function CurrencySwitcher({ active, label }: { active: Currency; label: s
           onClick={() => choose(c)}
           aria-current={c === active ? 'true' : undefined}
           disabled={pending}
-          className={`min-h-[44px] px-3 py-2 text-sm ${
-            c === active ? 'font-semibold text-accent underline' : 'text-text-secondary'
+          className={`inline-flex min-h-[44px] cursor-pointer items-center border-b-2 px-2 font-display text-sm ${
+            c === active
+              ? 'border-accent font-medium text-accent'
+              : 'border-transparent font-light text-text-secondary hover:text-accent'
           }`}
         >
           {LABEL[c]}

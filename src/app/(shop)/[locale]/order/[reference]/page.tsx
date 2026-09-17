@@ -49,15 +49,15 @@ export default async function OrderConfirmationPage({ params, searchParams }: Pr
   const t = await getTranslations('order')
 
   return (
-    <main className="mx-auto max-w-[800px] px-4 py-10">
-      <h1 className="text-2xl font-semibold">
+    <main className="mx-auto max-w-[800px] px-4 pt-10 sm:px-8 sm:pt-12">
+      <h1 className="text-accent">
         {band === 'processing'
           ? t('processing.heading')
           : t(`${band}.heading` as 'holding.heading')}
       </h1>
 
       {band === 'holding' && order.holdExpiresAt && (
-        <p className="mt-3 text-text-secondary">
+        <p className="prose-serif mt-4 text-text-secondary">
           {t('holding.body', { time: formatConcertTime(order.holdExpiresAt, locale) })}
         </p>
       )}
@@ -65,36 +65,36 @@ export default async function OrderConfirmationPage({ params, searchParams }: Pr
       {band === 'processing' && <OrderProcessingIsland />}
 
       {(band === 'expired' || band === 'cancelled' || band === 'paid' || band === 'refunded') && (
-        <p className="mt-3 text-text-secondary">
+        <p className="prose-serif mt-4 text-text-secondary">
           {t(`${band}.body` as 'holding.body')}
         </p>
       )}
 
-      <dl className="mt-8 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 border-t border-border pt-6">
-        <dt className="text-text-secondary">{t('reference')}</dt>
-        <dd className="font-mono">{order.reference}</dd>
+      <dl className="panel mt-8 grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 p-5 sm:p-6">
+        <dt className="text-sm text-text-secondary">{t('reference')}</dt>
+        <dd className="order-reference font-display text-lg font-medium">{order.reference}</dd>
 
-        <dt className="text-text-secondary">{t('buyer')}</dt>
+        <dt className="text-sm text-text-secondary">{t('buyer')}</dt>
         <dd>
           {order.firstName} {order.lastName}
         </dd>
 
-        <dt className="text-text-secondary">{t('concert')}</dt>
+        <dt className="text-sm text-text-secondary">{t('concert')}</dt>
         <dd>
           {event.title} — {formatConcertDate(event.startsAt, locale)},{' '}
           {formatConcertTime(event.startsAt, locale)}
         </dd>
 
-        <dt className="text-text-secondary">{t('venue')}</dt>
+        <dt className="text-sm text-text-secondary">{t('venue')}</dt>
         <dd>
           {event.venue}, {event.city}
         </dd>
 
-        <dt className="text-text-secondary">{t('quantity')}</dt>
+        <dt className="text-sm text-text-secondary">{t('quantity')}</dt>
         <dd>{order.quantity}</dd>
 
-        <dt className="text-text-secondary">{t('total')}</dt>
-        <dd>{formatMoney(order.total, order.currency, locale)}</dd>
+        <dt className="text-sm text-text-secondary">{t('total')}</dt>
+        <dd className="price font-display text-lg font-medium">{formatMoney(order.total, order.currency, locale)}</dd>
       </dl>
 
       {band === 'holding' && (
@@ -114,7 +114,7 @@ export default async function OrderConfirmationPage({ params, searchParams }: Pr
       )}
 
       {(band === 'expired' || band === 'cancelled') && (
-        <Link href={`/koncert/${event.slug}`} className="mt-8 inline-block underline">
+        <Link href={`/koncert/${event.slug}`} className="btn btn-secondary mt-8">
           {t('startOver')}
         </Link>
       )}

@@ -132,6 +132,30 @@ reproduction simply failed to trigger it.
 | 15 | Vercel deployment | ✅ **done 7 Sep 2026** by the owner, verified live (below). Runbook: [`DEPLOY-PLAN-05.md`](DEPLOY-PLAN-05.md) |
 | **16** | **Verification, walkthrough, STATUS** | steps 2–6 done 7 Sep. **Step 7, the six-flow walkthrough, is blocked — the demo database is empty (below).** |
 
+### 17 Sep 2026 — shop restyled after krzyzowa-music.eu; payments test script written
+
+**Not deployed yet** — on `feat/plan-05-payments`, uncommitted.
+
+- **`plan/05-manual-test.md`** — every payment scenario (happy paths, failures,
+  form, holds, the reclaim-or-refund safety net) with Stripe's test data,
+  checked against Stripe's docs. `DEPLOY-PLAN-05.md` Part 3 now points to it.
+  Two corrections found writing it: Klarna *is* testable (Stripe publishes test
+  identities), and BLIK failure simulation is probably unreachable from our
+  checkout (it keys on a billing e-mail we do not send).
+- **Restyle** — KM logo and trilingual motto in a header, Jost headings (Futura
+  stand-in), EB Garamond text, the logo's red `#CC1216` as accent, date tiles
+  instead of grey placeholders, red "Kup bilety" buttons, a themed Stripe
+  Payment Element, favicon and app icons from the logo. Full list and reasons in
+  `10-design-system.md` → "Revision — 17 September 2026". Checked by screenshot
+  on desktop and phone, PL and DE, and on admin login (shares the stylesheet).
+- **Bugs fixed on the way:** validation errors had no colour (tokens missing);
+  form fields used the 1.3:1 border §2 forbids; size classes on every `<p>` were
+  ignored (base styles unlayered); the programme listing said "tickets
+  available" for concerts whose sales had closed. Regression tests added for the
+  first three; negative control run against the old `globals.css` — 5 failures,
+  as expected.
+- Gate from a clean tree: **48 files, 445 tests, exit 0**.
+
 ### Task 15 verified live, 7 Sep 2026
 
 Checked against `https://tickets-km.vercel.app`, not taken on report:
@@ -160,6 +184,26 @@ no migration, so merging it cannot touch the shared Neon database.
 Also still uncommitted on `feat/plan-05-payments`: the seed guard, the deploy
 runbook and the doc corrections from the evening of 7 Sep (gate green then;
 tree unchanged since).
+
+### 17 Sep 2026 — demo DB seeded; live site found reading production
+
+- Neon `development` seeded content-only: 2 venues, 11 concerts, no admins.
+  Production untouched (0 concerts).
+- The live shop still showed nothing, uncached. A login on the live site
+  wrote its session to **`production`** — Vercel Production has been reading
+  the production branch, not `development` as `HANDOFF.md` said.
+- **Fixed the same day.** Owner set `DATABASE_URL` + `DIRECT_URL` (Production
+  and Preview) to the `development` values and redeployed. Verified live,
+  uncached: `/pl`, `/de`, `/en` each list **8 concerts** (11 seeded minus the
+  DRAFT, CANCELLED and past-dated fixtures, which Plan 03 hides by design); the
+  empty-state message is not rendered; production still `events=0 orders=0`.
+- **`96260fb` is live:** the concert page renders the `buybox-currency` select
+  and "Płacisz w PLN m.in.: karta, BLIK, Przelewy24".
+- **`NEXT_PUBLIC_SITE_URL` verified for the first time:** hreflang links on the
+  concert page read `https://tickets-km.vercel.app/…`; no `localhost` anywhere.
+- Cron `401`, webhook `400` unchanged.
+- **Next: Task 16 Step 7** — the six-flow walkthrough on the live URL
+  ([`DEPLOY-PLAN-05.md`](DEPLOY-PLAN-05.md) Part 3).
 
 ### Blocked: the demo database has no content
 

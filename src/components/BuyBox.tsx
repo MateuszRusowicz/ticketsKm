@@ -47,9 +47,9 @@ export function BuyBox({
   }
 
   return (
-    <div className="mt-6 flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <label htmlFor="buybox-currency" className="text-sm text-text-secondary">
+    <div className="mt-6 flex flex-col gap-5">
+      <div>
+        <label htmlFor="buybox-currency" className="field-label">
           {t('currencySelect')}
         </label>
         <select
@@ -58,7 +58,7 @@ export function BuyBox({
           value={currency}
           disabled={pending}
           onChange={(e) => chooseCurrency(e.target.value)}
-          className="min-h-[44px] border border-border px-3 text-base"
+          className="field"
         >
           {CURRENCIES.map((c) => (
             <option key={c} value={c}>
@@ -66,20 +66,20 @@ export function BuyBox({
             </option>
           ))}
         </select>
-        <p className="text-sm text-text-secondary">
+        <p className="mt-2 text-sm leading-snug text-text-secondary">
           {t('payingIn', { currency, methods: methodLabels.join(', ') })}
         </p>
       </div>
 
       <form
-        className="flex flex-wrap items-end gap-4"
+        className="flex flex-col gap-5"
         onSubmit={(e) => {
           e.preventDefault()
           router.push(`/${locale}/koncert/${slug}/zamowienie?q=${quantity}`)
         }}
       >
-        <div className="flex flex-col gap-1">
-          <label htmlFor="quantity" className="text-sm text-text-secondary">
+        <div>
+          <label htmlFor="quantity" className="field-label">
             {labels.quantity}
           </label>
           <select
@@ -87,8 +87,7 @@ export function BuyBox({
             name="quantity"
             value={quantity}
             onChange={(e) => setQuantity(Number(e.target.value))}
-            // 1rem or iOS zooms the whole page on focus.
-            className="min-h-[48px] border border-border px-3 text-base"
+            className="field"
           >
             {options.map((n) => (
               <option key={n} value={n}>
@@ -98,10 +97,7 @@ export function BuyBox({
           </select>
         </div>
 
-        <button
-          type="submit"
-          className="min-h-[48px] bg-accent px-6 text-base text-white hover:opacity-90"
-        >
+        <button type="submit" className="btn btn-primary w-full">
           {labels.buy}
         </button>
       </form>

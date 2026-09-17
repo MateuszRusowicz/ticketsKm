@@ -96,7 +96,7 @@ export function CheckoutForm({
   return (
     <form action={action} className="mt-8 max-w-[800px]" noValidate>
       {formError && (
-        <p role="alert" className="mb-6 border-l-4 border-error bg-surface px-4 py-3">
+        <p role="alert" className="mb-6 border-l-4 border-error bg-surface px-4 py-3 text-text-primary">
           {t(formError as 'soldOut')}
         </p>
       )}
@@ -106,7 +106,7 @@ export function CheckoutForm({
       <input type="hidden" {...register('currency')} />
 
       <fieldset className="border-0 p-0">
-        <legend className="text-xl">{t('buyerSection')}</legend>
+        <legend className="font-display text-2xl font-medium">{t('buyerSection')}</legend>
 
         <Field name="email" label={t('email')} hint={t('emailHint')} error={fieldError('email', errors.email?.message)}>
           {(a) => <input type="email" autoComplete="email" {...a} {...register('email')} />}
@@ -126,48 +126,54 @@ export function CheckoutForm({
         </Field>
       </fieldset>
 
-      <fieldset className="mt-8 border-0 p-0">
-        <legend className="text-xl">{t('attendeesSection')}</legend>
-        {fieldError('attendeeNames', errors.attendeeNames?.message) && (
-          <p role="alert" className="mt-2 text-sm text-danger">
-            {fieldError('attendeeNames', errors.attendeeNames?.message)}
-          </p>
-        )}
-        {Array.from({ length: quantity }, (_, i) => (
-          <Field
-            key={i}
-            name={`attendeeNames-${i}`}
-            label={t('attendeeLabel', { number: i + 1 })}
-            error={msg(errors.attendeeNames?.[i]?.message)}
-          >
-            {(a) => <input {...a} {...register(`attendeeNames.${i}` as const)} />}
-          </Field>
-        ))}
-      </fieldset>
-
-      <fieldset className="mt-8 border-0 p-0">
-        <label className="flex min-h-[48px] items-center gap-3">
-          <input type="checkbox" {...register('needsInvoice')} className="size-5" />
-          <span>{t('needsInvoice')}</span>
-        </label>
-
-        {needsInvoice && (
-          <div className="mt-2">
-            <Field name="companyName" label={t('companyName')} error={fieldError('companyName', errors.companyName?.message)}>
-              {(a) => <input {...a} {...register('companyName')} />}
+      {/* The rule sits on a wrapper, not the fieldset: a <legend> renders inside
+          its fieldset's top border, so a border there would cut through it. */}
+      <div className="mt-10 border-t border-border pt-8">
+        <fieldset className="border-0 p-0">
+          <legend className="font-display text-2xl font-medium">{t('attendeesSection')}</legend>
+          {fieldError('attendeeNames', errors.attendeeNames?.message) && (
+            <p role="alert" className="mt-2 text-sm text-danger">
+              {fieldError('attendeeNames', errors.attendeeNames?.message)}
+            </p>
+          )}
+          {Array.from({ length: quantity }, (_, i) => (
+            <Field
+              key={i}
+              name={`attendeeNames-${i}`}
+              label={t('attendeeLabel', { number: i + 1 })}
+              error={msg(errors.attendeeNames?.[i]?.message)}
+            >
+              {(a) => <input {...a} {...register(`attendeeNames.${i}` as const)} />}
             </Field>
-            <Field name="nip" label={t('nip')} error={fieldError('nip', errors.nip?.message)}>
-              {(a) => <input {...a} {...register('nip')} />}
-            </Field>
-            <Field name="invoiceAddress" label={t('invoiceAddress')} error={fieldError('invoiceAddress', errors.invoiceAddress?.message)}>
-              {(a) => <input {...a} {...register('invoiceAddress')} />}
-            </Field>
-          </div>
-        )}
-      </fieldset>
+          ))}
+        </fieldset>
+      </div>
 
-      <label className="mt-8 flex min-h-[48px] items-start gap-3">
-        <input type="checkbox" {...register('acceptedTerms')} className="mt-1 size-5" />
+      <div className="mt-10 border-t border-border pt-6">
+        <fieldset className="border-0 p-0">
+          <label className="flex min-h-[48px] cursor-pointer items-center gap-3">
+            <input type="checkbox" {...register('needsInvoice')} className="size-5 accent-accent" />
+            <span>{t('needsInvoice')}</span>
+          </label>
+
+          {needsInvoice && (
+            <div className="mt-2">
+              <Field name="companyName" label={t('companyName')} error={fieldError('companyName', errors.companyName?.message)}>
+                {(a) => <input {...a} {...register('companyName')} />}
+              </Field>
+              <Field name="nip" label={t('nip')} error={fieldError('nip', errors.nip?.message)}>
+                {(a) => <input {...a} {...register('nip')} />}
+              </Field>
+              <Field name="invoiceAddress" label={t('invoiceAddress')} error={fieldError('invoiceAddress', errors.invoiceAddress?.message)}>
+                {(a) => <input {...a} {...register('invoiceAddress')} />}
+              </Field>
+            </div>
+          )}
+        </fieldset>
+      </div>
+
+      <label className="mt-6 flex min-h-[48px] cursor-pointer items-start gap-3">
+        <input type="checkbox" {...register('acceptedTerms')} className="mt-1 size-5 accent-accent" />
         <span>
           {/* Tag syntax, not {placeholders}: next-intl's rich text matches
               <terms>…</terms> in the message. With a placeholder the callback
@@ -192,10 +198,7 @@ export function CheckoutForm({
         </p>
       )}
 
-      <button
-        type="submit"
-        className="mt-8 min-h-[48px] bg-accent px-6 text-base text-white hover:opacity-90"
-      >
+      <button type="submit" className="btn btn-primary mt-10 w-full sm:w-auto">
         {t('submit')}
       </button>
     </form>
@@ -203,7 +206,8 @@ export function CheckoutForm({
 }
 
 // 1rem, or iOS zooms the page when the field takes focus.
-const INPUT = 'min-h-[48px] w-full border border-border px-3 text-base'
+// .field in globals.css: 16px text, and an input-strength border (§2 of the design system).
+const INPUT = 'field'
 
 /**
  * A labelled field with its hint and error wired to the input.
@@ -241,12 +245,12 @@ function Field({
   const describedBy = [hintId, errorId].filter(Boolean).join(' ') || undefined
 
   return (
-    <div className="mt-4">
-      <label htmlFor={id} className="block text-sm text-text-secondary">
+    <div className="mt-5">
+      <label htmlFor={id} className="field-label">
         {label}
       </label>
       {hint && (
-        <p id={hintId} className="text-sm text-text-secondary">
+        <p id={hintId} className="-mt-1 mb-2 text-sm text-text-secondary">
           {hint}
         </p>
       )}

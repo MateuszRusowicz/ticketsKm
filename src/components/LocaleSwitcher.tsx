@@ -13,15 +13,19 @@ export function LocaleSwitcher() {
   const active = useLocale()
 
   return (
-    <nav aria-label="Język" className="flex gap-1">
+    <nav aria-label="Język" className="flex gap-0.5">
       {LOCALES.map((l) => (
         <Link
           key={l}
           href={pathname}
           locale={l}
           aria-current={l === active ? 'true' : undefined}
-          className={`min-h-[44px] px-3 py-2 text-sm ${
-            l === active ? 'font-semibold text-accent underline' : 'text-text-secondary'
+          // Active state is carried by weight and a rule as well as colour,
+          // so it does not depend on seeing red (WCAG 1.4.1).
+          className={`inline-flex min-h-[44px] items-center border-b-2 px-2 font-display text-sm tracking-wide ${
+            l === active
+              ? 'border-accent font-medium text-accent'
+              : 'border-transparent font-light text-text-secondary hover:text-accent'
           }`}
         >
           {LABEL[l]}

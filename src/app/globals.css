@@ -1,20 +1,42 @@
 @import 'tailwindcss';
 
+/*
+ * Design tokens — plan/10-design-system.md is the specification.
+ *
+ * Revised 17 Sep 2026 to follow the festival's main site (krzyzowa-music.eu):
+ * the accent is the logo's own red, headings move to a Futura-style sans, and
+ * long text to EB Garamond. The accessibility corrections in §2 of the design
+ * system still apply unchanged.
+ */
 @theme {
   --color-background: #FFFFFF;
-  --color-surface: #F8F9FA;
+  --color-surface: #F7F6F4;
   --color-text-primary: #1A1A1A;
-  --color-text-secondary: #4A4A4A;
-  --color-accent: #C4122D;
-  --color-accent-hover: #A00F25;
+  --color-text-secondary: #555454;
+  /* The logo's red, sampled from the festival's logo file. 5.7:1 on white —
+     AA for text of any size, and for white text on a red button. Matching it
+     exactly matters: a slightly different red beside the logo reads as a
+     mistake, not as a second shade. */
+  --color-accent: #CC1216;
+  --color-accent-hover: #A30E11;
   --color-border: #E0E0E0;
   --color-border-strong: #949494;
   --color-border-input: #757575;
   --color-success: #1E6B3A;
   --color-warning: #8A5A00;
+  /* Components already reference text-danger / text-error / border-error.
+     Until 17 Sep none of these tokens existed, so Tailwind generated nothing
+     and every validation message rendered in plain body colour. */
+  --color-danger: #CC1216;
+  --color-error: #CC1216;
+  --color-focus: #CC1216;
 
+  /* Interface: labels, fields, numbers, small print. */
   --font-primary: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  --font-secondary: var(--font-merriweather), Georgia, 'Times New Roman', serif;
+  /* Headings, titles, navigation, buttons — the main site's Futura role. */
+  --font-display: var(--font-jost), 'Futura', 'Century Gothic', 'Helvetica Neue', Arial, sans-serif;
+  /* Long text — descriptions, taglines, legal prose. */
+  --font-serif: var(--font-eb-garamond), Garamond, Georgia, 'Times New Roman', serif;
 
   --space-1: 0.5rem;
   --space-2: 1rem;
@@ -27,32 +49,171 @@
   --radius: 2px;
 }
 
-html {
-  color-scheme: light;
+/* Element defaults live in @layer base. Tailwind 4 puts its utilities in a
+   cascade layer, and unlayered CSS beats every layer — so while these rules
+   were unlayered, a size class on any <p> or heading (text-sm, text-3xl…) was
+   silently ignored. Found 17 Sep 2026: "Płacisz w PLN…" rendered at body size
+   despite text-sm, and the buy-box price never grew. */
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    background: var(--color-background);
+    color: var(--color-text-primary);
+    font-family: var(--font-primary);
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Headings as on the main site: geometric sans, medium weight, tight. Colour
+     is set per use — page titles are red, list titles stay dark so a programme
+     of ten concerts is not a wall of red. */
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    letter-spacing: -0.005em;
+  }
+
+  /* Hyphenation is what stops "Kammermusikfestival" overflowing a narrow
+     column. It only works because the layouts set <html lang>. */
+  h1, h2, h3, p {
+    hyphens: auto;
+    overflow-wrap: break-word;
+  }
+
+  h1 { font-size: clamp(2rem, 1.4rem + 2.4vw, 3.25rem); line-height: 1.1; }
+  h2 { font-size: clamp(1.375rem, 1.15rem + 1vw, 1.875rem); line-height: 1.2; }
+  p  { font-size: clamp(1rem, 0.96rem + 0.2vw, 1.125rem); line-height: 1.6; }
+
+  .price, .order-reference { font-variant-numeric: tabular-nums; }
+
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
 }
 
-body {
-  background: var(--color-background);
-  color: var(--color-text-primary);
-  font-family: var(--font-primary);
-  font-weight: 400;
+@layer components {
+  /* White type on a red band, as over the main site's hero photographs.
+     box-decoration-break keeps the band on every line when it wraps. */
+  .brand-band {
+    display: inline;
+    background: var(--color-accent);
+    color: #FFFFFF;
+    font-family: var(--font-display);
+    font-weight: 400;
+    padding: 0.1em 0.4em;
+    line-height: 1.7;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
+  /* Long text in the main site's serif. */
+  .prose-serif {
+    font-family: var(--font-serif);
+    font-size: clamp(1.125rem, 1.07rem + 0.25vw, 1.25rem);
+    line-height: 1.6;
+    color: var(--color-text-primary);
+  }
+
+  /* Buttons — flat, near-square, like the main site's "Infos & Tickets". */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 48px;
+    padding: 0.625rem 1.75rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    font-family: var(--font-display);
+    font-size: 1.0625rem;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+  }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .btn-primary {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: #FFFFFF;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+  }
+
+  .btn-secondary {
+    background: transparent;
+    border-color: var(--color-border-strong);
+    color: var(--color-text-primary);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    border-color: var(--color-text-primary);
+  }
+
+  /* Form controls. The border is --color-border-input (4.6:1), never
+     --color-border (1.3:1): WCAG 1.4.11 needs 3:1 for a field's outline,
+     and an invisible field on a checkout form costs sales. */
+  .field {
+    display: block;
+    width: 100%;
+    min-height: 48px;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--color-border-input);
+    border-radius: var(--radius);
+    background: var(--color-background);
+    color: var(--color-text-primary);
+    font-family: var(--font-primary);
+    font-size: 1rem; /* below 16px iOS zooms the page on focus */
+  }
+  .field:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+    border-color: var(--color-text-primary);
+  }
+  .field[aria-invalid='true'] {
+    border-color: var(--color-error);
+    border-width: 2px;
+  }
+
+  .field-label {
+    display: block;
+    margin-bottom: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+  }
+
+  /* Raised block for summaries and the buy box: a hairline rule, never a
+     shadow — printed matter has none. */
+  .panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+  }
+
+  /* Text links in running copy and "back" links. */
+  .link {
+    color: var(--color-text-secondary);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    text-decoration-thickness: 1px;
+  }
+  .link:hover { color: var(--color-accent); }
+
+  /* Small uppercase label above a title — date, section name. */
+  .eyebrow {
+    font-family: var(--font-display);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+  }
 }
-
-h1, h2, h3 {
-  font-family: var(--font-secondary);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-/* Hyphenation is what stops "Kammermusikfestival" overflowing a narrow
-   column. It only works when <html lang> is set — Task 12 wires that up. */
-h1, h2, h3, p {
-  hyphens: auto;
-  overflow-wrap: break-word;
-}
-
-h1 { font-size: clamp(1.75rem, 1.2rem + 2.2vw, 3rem); line-height: 1.15; }
-h2 { font-size: clamp(1.375rem, 1.1rem + 1.2vw, 2rem); line-height: 1.25; }
-p  { font-size: clamp(1rem, 0.96rem + 0.2vw, 1.125rem); line-height: 1.65; }
-
-.price, .order-reference { font-variant-numeric: tabular-nums; }

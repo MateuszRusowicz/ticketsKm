@@ -36,6 +36,9 @@ no automated coverage at all.
 
 ## Testing by hand
 
+[`05-manual-test.md`](05-manual-test.md) is the payments checklist — every
+scenario plus the Stripe test data (cards, BLIK, P24, Klarna, PayPal, SEPA).
+
 [`03-manual-test.md`](03-manual-test.md) is the click-through checklist for the
 Plan 03 demo — what to try, what should happen, and what is deliberately
 missing. Written because the automated suite verifies behaviour but cannot

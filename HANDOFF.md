@@ -98,6 +98,16 @@ Content-only seeding of a remote database is `SEED_SKIP_ADMINS=1`, or
 | Preview (per PR) | Vercel-generated | Neon `development` | Neon `development` |
 | Local | <http://localhost:3000> | Docker Postgres `km_dev` | unchanged |
 
+> **Measured 17 Sep 2026: this was not true.** A login on the live site created
+> its session row in Neon **`production`**, not `development` — so Vercel
+> Production had been reading the dormant production branch, and its builds
+> applied the Plan 04 and Plan 05 migrations there. The table above is the
+> *intended* setup. **Restored the same day:** Vercel's `DATABASE_URL` /
+> `DIRECT_URL` (Production and Preview) now hold the `development` values, and
+> after a redeploy the live shop lists the seeded concerts while production
+> still has none. To re-check at any time: log in on the live site and see which
+> branch's `AdminSession` count rises.
+
 **The whole app is built and tested against dummy data on Neon
 `development`.** The real database is connected once, at the end, by Plan 02
 Task 9 — a change to two Vercel Production variables and a redeploy. Until then
@@ -354,7 +364,7 @@ a hand walkthrough found four real defects that all 400+ tests had passed over:
 | Checkout form wiped itself on a bad e-mail | the action returned errors but not the submitted values |
 | "Pay" button still shown after paying | the redirect beat the webhook; band came from the stale stored mirror |
 
-Run [`plan/DEPLOY-PLAN-05.md`](plan/DEPLOY-PLAN-05.md) Part 3 before every
+Run [`plan/05-manual-test.md`](plan/05-manual-test.md) (the ★ scenarios at minimum) before every
 release that touches checkout. It is the only layer that catches this class.
 
 **Payment methods are driven by currency, not language.** PLN gives card, BLIK
@@ -367,9 +377,12 @@ the charge cannot diverge.
 holds, hide near sellout). Those exist because SEPA holds seats for days; PayPal
 settles in seconds. Do not "fix" this by making it consistent.
 
-**Klarna is still unverified.** It needs a real phone number to complete, so it
-was never exercised. Whether it is available to a *live* Polish account remains
-an open question — a test account offering it proves nothing.
+**Klarna is still unverified.** It was recorded as needing a real phone number,
+so it was never exercised — but Stripe publishes Klarna test identities with
+test phone numbers (checked 17 Sep 2026; see `plan/05-manual-test.md`), so it
+*can* be tested end to end in test mode. Whether Klarna is available to a *live*
+Polish account remains an open question — a test account offering it proves
+nothing.
 
 **Alerts are a stopgap.** Anything needing a human is `console.error` on
 **stderr** — Vercel captures stderr, not response bodies. Grep the runtime logs

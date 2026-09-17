@@ -1,9 +1,8 @@
 import { notFound } from 'next/navigation'
 import { hasLocale, NextIntlClientProvider } from 'next-intl'
-import { getMessages, getTranslations, setRequestLocale } from 'next-intl/server'
-import { merriweather } from '@/app/fonts'
-import { CurrencySwitcher } from '@/components/CurrencySwitcher'
-import { LocaleSwitcher } from '@/components/LocaleSwitcher'
+import { getMessages, setRequestLocale } from 'next-intl/server'
+import { fontVariables } from '@/app/fonts'
+import { SiteHeader } from '@/components/SiteHeader'
 import { SiteFooter } from '@/components/SiteFooter'
 import { getActiveCurrency } from '@/lib/server/currency'
 import { routing } from '@/i18n/routing'
@@ -37,19 +36,15 @@ export default async function LocaleLayout({
   // and resolving currency after hydration would flash the wrong price on
   // every navigation.
   const currency = await getActiveCurrency(locale)
-  const t = await getTranslations('site')
 
   // The lang attribute is what selects the browser's hyphenation dictionary.
   // Without it, `hyphens: auto` does nothing and German compounds overflow.
   return (
-    <html lang={locale} className={merriweather.variable}>
-      <body>
+    <html lang={locale} className={fontVariables}>
+      <body className="flex min-h-dvh flex-col">
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <header className="mx-auto flex max-w-[1200px] items-center justify-end gap-4 px-8 py-4">
-            <CurrencySwitcher active={currency} label={t('currency')} />
-            <LocaleSwitcher />
-          </header>
-          {children}
+          <SiteHeader currency={currency} />
+          <div className="flex-1">{children}</div>
           <SiteFooter />
         </NextIntlClientProvider>
       </body>

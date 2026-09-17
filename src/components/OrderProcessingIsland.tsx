@@ -29,7 +29,7 @@ export function OrderProcessingIsland() {
   }, [])
 
   return (
-    <p className="mt-3 text-text-secondary">
+    <p className="prose-serif mt-4 text-text-secondary">
       {timedOut ? t('processing.timeoutBody') : t('processing.body')}
     </p>
   )

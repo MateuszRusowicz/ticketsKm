@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react'
 import { useState } from 'react'
-import { loadStripe } from '@stripe/stripe-js'
+import { loadStripe, type Appearance } from '@stripe/stripe-js'
 import {
   Elements,
   PaymentElement,
@@ -22,6 +22,38 @@ import {
 let stripePromise: ReturnType<typeof loadStripe> | null = null
 function getStripe(publishableKey: string) {
   return (stripePromise ??= loadStripe(publishableKey))
+}
+
+
+/**
+ * Theme for Stripe's Payment Element, which renders in an iframe and ignores
+ * our CSS. Values mirror the tokens in globals.css (plan/10-design-system.md
+ * §6); an unthemed Element looks like a foreign object in the middle of the
+ * checkout. System fonts only — loading a web font into Stripe's iframe would
+ * fetch it from a third party, which §3 of the design system rules out.
+ */
+const APPEARANCE: Appearance = {
+  theme: 'stripe',
+  variables: {
+    colorPrimary: '#CC1216',
+    colorBackground: '#FFFFFF',
+    colorText: '#1A1A1A',
+    colorTextSecondary: '#555454',
+    colorDanger: '#CC1216',
+    fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif",
+    fontSizeBase: '16px',
+    borderRadius: '2px',
+    spacingUnit: '4px',
+  },
+  rules: {
+    // #757575, not the decorative #E0E0E0: Stripe's fields are form controls
+    // and fall under the same 3:1 non-text contrast rule as ours.
+    '.Input': { border: '1px solid #757575', boxShadow: 'none' },
+    '.Input:focus': { outline: '2px solid #CC1216', outlineOffset: '2px', boxShadow: 'none' },
+    '.Label': { fontWeight: '500', color: '#555454' },
+    '.Tab': { border: '1px solid #949494', boxShadow: 'none' },
+    '.Tab--selected': { borderColor: '#CC1216', boxShadow: '0 0 0 1px #CC1216' },
+  },
 }
 
 type Props = {
@@ -46,7 +78,7 @@ export function PaymentElementIsland({ reference, accessToken, locale }: Props) 
     const returnUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/${locale}/order/${reference}?t=${accessToken}`
     return (
       <div className="mt-8">
-        <Elements stripe={stripe} options={{ clientSecret: state.clientSecret }}>
+        <Elements stripe={stripe} options={{ clientSecret: state.clientSecret, appearance: APPEARANCE }}>
           <StripeCheckoutForm returnUrl={returnUrl} />
         </Elements>
       </div>
@@ -64,11 +96,7 @@ export function PaymentElementIsland({ reference, accessToken, locale }: Props) 
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={isPending}
-        className="min-h-[44px] bg-accent px-6 text-base text-white hover:opacity-90 disabled:opacity-50"
-      >
+      <button type="submit" disabled={isPending} className="btn btn-primary w-full sm:w-auto">
         {isPending ? t('holding.paymentLoading') : t('holding.payButton')}
       </button>
     </form>
@@ -114,7 +142,7 @@ function StripeCheckoutForm({ returnUrl }: { returnUrl: string }) {
       <button
         type="submit"
         disabled={submitting || !stripe}
-        className="mt-4 min-h-[44px] bg-accent px-6 text-base text-white hover:opacity-90 disabled:opacity-50"
+        className="btn btn-primary mt-6 w-full sm:w-auto"
       >
         {submitting ? t('holding.paymentLoading') : t('holding.payButton')}
       </button>

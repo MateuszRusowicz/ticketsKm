@@ -42,25 +42,29 @@ export default async function OrderPage({ params, searchParams }: Props) {
   const unit = priceFor(event, currency)
 
   return (
-    <main className="mx-auto max-w-[800px] px-8 py-12">
+    <main className="mx-auto max-w-[800px] px-4 pt-10 sm:px-8 sm:pt-12">
       <p className="text-sm">
-        <Link
-          href={`/koncert/${event.slug}`}
-          className="text-text-secondary underline hover:text-accent"
-        >
+        <Link href={`/koncert/${event.slug}`} className="link font-display">
           ← {event.translation.title}
         </Link>
       </p>
 
-      <h1 className="mt-6 text-3xl">{t('heading')}</h1>
+      <h1 className="mt-6 text-accent">{t('heading')}</h1>
 
-      <p className="mt-2 text-text-secondary">
-        {formatConcertDate(event.startsAt, locale)}, {formatConcertTime(event.startsAt, locale)} ·{' '}
-        {event.venue.name}
-      </p>
-      <p className="mt-1">
-        {t('summary', { count: quantity, total: formatMoney(unit * quantity, currency, locale) })}
-      </p>
+      {/* What is being bought, before a single field — the buyer should never
+          have to scroll back up to check the concert or the total. */}
+      <div className="panel mt-6 flex flex-col gap-1 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:p-6">
+        <div className="min-w-0">
+          <p className="font-display text-xl text-text-primary">{event.translation.title}</p>
+          <p className="text-sm text-text-secondary">
+            {formatConcertDate(event.startsAt, locale)}, {formatConcertTime(event.startsAt, locale)} ·{' '}
+            {event.venue.name}
+          </p>
+        </div>
+        <p className="price shrink-0 font-display text-xl text-text-primary">
+          {t('summary', { count: quantity, total: formatMoney(unit * quantity, currency, locale) })}
+        </p>
+      </div>
 
       <CheckoutForm
         ticketTypeId={event.ticketTypeId}
@@ -70,7 +74,6 @@ export default async function OrderPage({ params, searchParams }: Props) {
         termsHref={`/${locale}/regulamin`}
         privacyHref={`/${locale}/prywatnosc`}
       />
-
     </main>
   )
 }

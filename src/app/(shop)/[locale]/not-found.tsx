@@ -9,11 +9,11 @@ export default async function NotFound() {
   const tSite = await getTranslations('site')
 
   return (
-    <main className="mx-auto max-w-[65ch] px-8 py-24">
-      <h1 className="text-3xl">{t('heading')}</h1>
-      <p className="mt-4 text-text-secondary">{t('body')}</p>
+    <main className="mx-auto max-w-[65ch] px-4 pt-16 sm:px-8 sm:pt-24">
+      <h1 className="text-accent">{t('heading')}</h1>
+      <p className="prose-serif mt-4 text-text-secondary">{t('body')}</p>
       <p className="mt-8">
-        <Link href="/" className="text-accent underline">
+        <Link href="/" className="btn btn-primary">
           {tSite('backToProgramme')}
         </Link>
       </p>

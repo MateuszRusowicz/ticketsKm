@@ -311,24 +311,19 @@ verify, look at a PaymentIntent id in a forwarded event: it embeds the account
 `.env` must contain `CRON_SECRET` (32+ chars) or `pnpm dev` refuses to boot.
 `.env` is git-ignored, so no test or gate catches its absence.
 
-### 3.1 The six flows
+### 3.1 The scenarios
 
-Buy from `/pl/koncert/<slug>` or `/de/…`; the currency dropdown is in the buy
-box. Currency is frozen at the order page, so pick it before continuing.
+**The scenarios and every piece of test data — cards, BLIK, P24, Klarna test
+identity, PayPal, SEPA IBANs — live in [`05-manual-test.md`](05-manual-test.md).**
+They are kept there and only there, so the two files cannot drift apart.
 
-| # | Flow | Input | Expected |
-|---|---|---|---|
-| 1 | PL / card | `4242 4242 4242 4242`, any future expiry, any CVC | PAID band; `Ticket` rows = quantity; `paymentMethodType = 'card'` |
-| 2 | PL / BLIK | Stripe's BLIK test code | brief `processing` band → PAID |
-| 3 | PL / P24 | hosted page → **Success** | brief `processing` band → PAID |
-| 4 | DE / Klarna | Klarna test flow | PAID. **If Klarna is not offered, record it in the Findings log** — its availability to a live PL account is still unverified, and it needs a real phone number to complete |
-| 5 | DE / card, declined | `4000 0000 0000 9995`, then retry with `4242 …` | Element shows the decline; **`Order.status` stays `PENDING`**; the retry reaches PAID on the same order |
-| 6 | EUR / SEPA hard timeout | IBAN `DE89370400440532013000` | order sits in `processing`; then simulate expiry (below) → `EXPIRED`, seats released, **no Stripe call** |
+On the **live site** you do not need `stripe listen` (3.0 above is for local
+testing only): Stripe delivers webhooks straight to the endpoint registered in
+Step 3.
 
-Flow 5 is the one that matters most in this list: it proves
-`payment_intent.payment_failed` does not release the buyer's seats.
+The minimum pass before a release is the ★ scenarios in that file.
 
-Flow 6's simulation — set the hold into the past, then fire the secondary sweep:
+**Local only — SEPA hard-timeout simulation** (on the live site I do this step; see scenario E1). Set the hold into the past, then fire the secondary sweep:
 
 `psql` is unusable on this machine (the `pg_wrapper` shim is on `PATH` but no
 client is installed), so edit the row through Prisma:

@@ -42,3 +42,23 @@ export function formatConcertDateTime(date: Date, locale: Locale): string {
 export function isoDateTime(date: Date): string {
   return date.toISOString()
 }
+
+/**
+ * Day, short month and short weekday as separate strings, for the date tile on
+ * a concert card. Each part is formatted in Warsaw time for the same reason as
+ * everything above: built from UTC parts, a concert at 00:30 on the 1st would
+ * print the 31st.
+ */
+export function concertDateParts(
+  date: Date,
+  locale: Locale,
+): { day: string; month: string; weekday: string } {
+  const part = (options: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat(BCP47[locale], { timeZone: TIMEZONE, ...options }).format(date)
+
+  return {
+    day: part({ day: 'numeric' }),
+    month: part({ month: 'short' }),
+    weekday: part({ weekday: 'short' }),
+  }
+}
