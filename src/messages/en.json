@@ -112,6 +112,16 @@
     "heading": "Page not found",
     "body": "This concert does not exist or is no longer available."
   },
+  "ticket": {
+    "valid": { "heading": "Valid ticket", "body": "Show this code at the entrance." },
+    "used": { "heading": "Ticket already used", "body": "Entry was recorded at {time}." },
+    "revoked": { "heading": "Ticket not valid", "body": "This ticket has been cancelled or refunded." },
+    "notFound": { "heading": "Ticket not found", "body": "Check the address from your ticket or contact the organiser." },
+    "codeLabel": "Ticket code",
+    "concert": "Concert",
+    "venue": "Venue",
+    "holder": "Name"
+  },
   "order": {
     "reference": "Order number",
     "buyer": "Buyer",
@@ -154,7 +164,11 @@
     },
     "paid": {
       "heading": "Order paid",
-      "body": "Tickets will be sent to your email address."
+      "body": "Tickets will be sent to your email address.",
+      "downloadPdf": "Download PDF",
+      "webTicket": "Open in browser",
+      "ticketLabel": "Ticket {number}",
+      "perTicketNote": "Each ticket has its own code. You can forward an individual ticket to an individual person."
     },
     "refunded": {
       "heading": "Order refunded",

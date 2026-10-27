@@ -36,6 +36,10 @@ no automated coverage at all.
 
 ## Testing by hand
 
+[`06-manual-test.md`](06-manual-test.md) is the ticket delivery checklist —
+PDF downloads, QR scan round-trip, the forwarding story, revoked-ticket
+behaviour, rate limiting.
+
 [`05-manual-test.md`](05-manual-test.md) is the payments checklist — every
 scenario plus the Stripe test data (cards, BLIK, P24, Klarna, PayPal, SEPA).
 
@@ -54,12 +58,21 @@ expected result, so progress is verified rather than assumed.
 |---|---|---|
 | [01 — Foundations](steps/01-foundations.md) ✅ | Phases 0–1 | An admin logs in and creates a concert in three languages |
 | [02 — Deployment](steps/02-deployment.md) | Phase 0 infra | The app runs at `bilety.krzyzowa-music.eu` with a verified backup |
-| [03 — Public programme](steps/03-public-programme.md) | Phase 2 | A visitor browses in 3 languages and reaches a validated form |
-| 04 — Inventory | Phase 3 | Concurrency tests prove the system cannot oversell |
-| 05 — Payments | Phases 4–5 | A real test payment produces a ticket email with a scannable QR |
-| 06 — Money out | Phase 6 | Invitations, promo codes and refunds work without the Stripe dashboard |
-| 07 — Scanner | Phase 7 | Two phones scan one ticket; exactly one shows green |
-| 08 — Launch | Phase 8 | A live transaction succeeds and is refunded. Also the only slot for CSP, shared rate limiting and the RODO retention job |
+| [03 — Public programme](steps/03-public-programme.md) ✅ | Phase 2 | A visitor browses in 3 languages and reaches a validated form |
+| [04 — Inventory](steps/04-inventory.md) ✅ | Phase 3 | Concurrency tests prove the system cannot oversell |
+| [05 — Payments](steps/05-payments.md) ✅ | Phases 4–5 | A real test payment produces a confirmed order on the deployed site |
+| [06 — Tickets](steps/06-tickets.md) ✅ | Fulfilment deliverables | A paid order yields a downloadable PDF with QR codes and a public `/t/<code>` page per ticket |
+| [07 — Scanner](steps/07-scanner.md) | Phase 7 | Two phones scan one ticket; exactly one shows green |
+| 08 — Money out | Phase 6 | Invitations, promo codes, refunds and ticket email through Resend work without the Stripe dashboard |
+| 09 — Launch | Phase 8 | A live transaction succeeds and is refunded. Also the only slot for CSP, shared rate limiting and the RODO retention job |
+
+**26 Oct 2026 — numbering change.** Executable Plan 06 was originally "Money
+out" (invitations / promo codes / refunds). The owner has prioritised
+tickets + scanner next, so Plan 06 is now "Tickets" and the former Plan 06
+scope moves to Plan 08. Design-doc numbering is unchanged: design doc 06
+(i18n, email, PDF) still exists and still describes PDF/QR; design doc 05
+(admin + scanner) still describes the scanner. See the trap in
+`/CLAUDE.md` about the two numbering schemes.
 
 Plan 02 can run at any point after Plan 01 — nothing later depends on it, so
 deploy when you want a preview URL rather than because the sequence says so.

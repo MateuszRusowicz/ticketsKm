@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type Stripe from 'stripe'
 import { db } from '@/lib/server/db'
 import { InsufficientCapacityError } from '@/lib/server/holds'
@@ -95,6 +95,19 @@ async function heldCount(id: string) {
 }
 
 let ticketTypeId: string
+
+// Start from a clean slate. order-reference.test.ts restarts
+// order_reference_seq without truncating Order, so when it runs before this
+// file (Vitest's order changes with a cold cache) leftover orders collide with
+// freshly drawn references: "Unique constraint failed on (reference)".
+beforeAll(async () => {
+  await db.$executeRawUnsafe(`
+    TRUNCATE TABLE "AuditLog", "Ticket", "OrderItem", "Order", "TicketType",
+                   "EventTranslation", "Event", "Venue"
+    RESTART IDENTITY CASCADE
+  `)
+  await db.$executeRawUnsafe('ALTER SEQUENCE "order_reference_seq" RESTART')
+})
 
 beforeEach(async () => {
   ticketTypeId = (await makeConcert()).ticketTypeId

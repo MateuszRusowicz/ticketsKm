@@ -45,7 +45,7 @@ export default async function OrderConfirmationPage({ params, searchParams }: Pr
     if (!confirmation) notFound()
   }
 
-  const { order, event, band } = confirmation
+  const { order, event, band, tickets: paidTickets } = confirmation
   const t = await getTranslations('order')
 
   return (
@@ -64,10 +64,44 @@ export default async function OrderConfirmationPage({ params, searchParams }: Pr
 
       {band === 'processing' && <OrderProcessingIsland />}
 
-      {(band === 'expired' || band === 'cancelled' || band === 'paid' || band === 'refunded') && (
+      {(band === 'expired' || band === 'cancelled' || band === 'refunded') && (
         <p className="prose-serif mt-4 text-text-secondary">
           {t(`${band}.body` as 'holding.body')}
         </p>
+      )}
+
+      {band === 'paid' && (
+        <>
+          <p className="prose-serif mt-4 text-text-secondary">{t('paid.body')}</p>
+          <p className="prose-serif mt-2 text-sm text-text-secondary">
+            {t('paid.perTicketNote')}
+          </p>
+          <ul className="mt-8 panel grid gap-4 p-5 sm:p-6">
+            {paidTickets.map((ticket, idx) => (
+              <li
+                key={ticket.code}
+                className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <div className="font-medium">
+                    {t('paid.ticketLabel', { number: idx + 1 })}
+                  </div>
+                  <div className="text-sm text-text-secondary">
+                    {ticket.holderName ?? '–'}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <a className="btn btn-primary" href={`/t/${ticket.code}/pdf`}>
+                    {t('paid.downloadPdf')}
+                  </a>
+                  <a className="btn btn-secondary" href={`/t/${ticket.code}`}>
+                    {t('paid.webTicket')}
+                  </a>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       <dl className="panel mt-8 grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 p-5 sm:p-6">

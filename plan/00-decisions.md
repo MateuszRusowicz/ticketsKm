@@ -52,6 +52,10 @@ this table, trust the table.
 | Zod | 3 | **4.4.3** | `z.string().url()` deprecated in favour of `z.url()`. |
 | Node | 20 | **24.14.1** | CI pinned to 24 to match. |
 | pnpm | 9+ | 10.33.2 | — |
+| pdf-lib | — | **1.17.1** | Installed in Plan 06 Task 1. Pure-JS PDF generation. |
+| @pdf-lib/fontkit | — | **1.1.1** | Installed in Plan 06 Task 1. Required for embedded TTF fonts. |
+| qrcode | — | **1.5.4** | Installed in Plan 06 Task 1. Pure-JS QR code generation. |
+| @types/qrcode | — | **1.5.6** | Installed in Plan 06 Task 1 (dev). Type declarations for qrcode. |
 
 Three further environment facts worth recording:
 

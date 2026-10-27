@@ -2,6 +2,7 @@ import 'server-only'
 import { z } from 'zod'
 import type Stripe from 'stripe'
 import { recordAudit } from './audit'
+import { emailFulfilledOrder } from './email'
 import { failOrder, fulfilOrder, recordPaymentAttempt, type RefundHook } from './orders'
 import { stripe } from './stripe'
 
@@ -99,6 +100,16 @@ export async function dispatchWebhookEvent(
       await recordPaymentAttempt(orderId, pi, { reason: 'succeeded' })
       const refundHook = buildRefundHook(pi.id)
       const result = await fulfilOrder(orderId, refundHook, pi)
+      if ('fulfilled' in result && result.fulfilled) {
+        // Plan 06 seam. No-op until EMAIL_ENABLED=true (Plan 08).
+        // AFTER fulfilOrder returns — never inside its transaction.
+        const emailed = await emailFulfilledOrder(orderId)
+        // Not fatal: a failed email must not re-fire a Stripe retry. The
+        // reconciliation cron (Plan 05 Task 14) is the retry mechanism.
+        if (emailed.sent === false && emailed.reason !== 'disabled') {
+          console.error(`EMAIL alert=1 orderId=${orderId} reason=${emailed.reason}`)
+        }
+      }
       return { acknowledged: true, action: 'fulfilOrder', detail: JSON.stringify(result) }
     }
 

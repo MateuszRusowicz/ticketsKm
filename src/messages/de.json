@@ -112,6 +112,16 @@
     "heading": "Seite nicht gefunden",
     "body": "Dieses Konzert existiert nicht oder ist nicht mehr verfügbar."
   },
+  "ticket": {
+    "valid": { "heading": "Gültige Eintrittskarte", "body": "Zeigen Sie diesen Code am Eingang vor." },
+    "used": { "heading": "Eintrittskarte bereits verwendet", "body": "Einlass wurde um {time} registriert." },
+    "revoked": { "heading": "Eintrittskarte ungültig", "body": "Diese Eintrittskarte wurde storniert oder erstattet." },
+    "notFound": { "heading": "Eintrittskarte nicht gefunden", "body": "Prüfen Sie die Adresse auf Ihrer Karte oder wenden Sie sich an den Veranstalter." },
+    "codeLabel": "Ticketcode",
+    "concert": "Konzert",
+    "venue": "Ort",
+    "holder": "Name"
+  },
   "order": {
     "reference": "Bestellnummer",
     "buyer": "Besteller",
@@ -154,7 +164,11 @@
     },
     "paid": {
       "heading": "Bestellung bezahlt",
-      "body": "Die Tickets werden an Ihre E-Mail-Adresse gesendet."
+      "body": "Die Tickets werden an Ihre E-Mail-Adresse gesendet.",
+      "downloadPdf": "PDF herunterladen",
+      "webTicket": "Im Browser öffnen",
+      "ticketLabel": "Ticket {number}",
+      "perTicketNote": "Jedes Ticket hat seinen eigenen Code. Sie können ein einzelnes Ticket an eine einzelne Person weiterleiten."
     },
     "refunded": {
       "heading": "Bestellung erstattet",

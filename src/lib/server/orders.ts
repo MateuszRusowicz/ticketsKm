@@ -396,8 +396,14 @@ export async function reclaimCapacityForOrder(
  *
  * Crockford alphabet: 0–9 A–Z excluding I L O U (32 symbols).
  * 16 bytes × 8 bits = 128 bits; ⌈128/5⌉ = 26 characters.
+ *
+ * 128-bit random Crockford base32 (26 chars). Collision probability at 10M
+ * codes is ~1.5 × 10^-26 — negligible, but if `Ticket.code`'s unique
+ * constraint ever throws inside `fulfilOrder` the transaction rolls back and
+ * Stripe retries, so even then the outcome is a one-second delay, not lost
+ * money.
  */
-function ticketCode(): string {
+export function ticketCode(): string {
   const alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
   const bytes = randomBytes(16)
   let out = ''
