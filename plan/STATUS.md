@@ -1,4 +1,67 @@
-# Status — 17 September 2026
+# Status — 26 October 2026
+
+## Next
+
+**Tickets + scanner.** Executable plans written 26 Oct 2026 after the owner
+asked for "PDF ticket with QR code, scannable at the door, DB updates on
+first scan, every possible error handled". The ask maps to two plans
+sequentially:
+
+1. **[Plan 06 — Tickets](steps/06-tickets.md)** — `fulfilOrder` already
+   creates `Ticket` rows with 128-bit Crockford codes. This plan adds the
+   QR generator, PDF generator (pdf-lib + fontkit + Noto Sans latin-ext),
+   the public `/t/<code>` page (read-only; opening it never marks the
+   ticket used — product invariant), the `/order/<ref>/tickets.pdf?t=…`
+   download endpoint, the download button on the order confirmation page,
+   and a no-op `emailFulfilledOrder(orderId)` seam for the Resend wiring
+   that stays blocked until DNS lands. **No migration.** Ten tasks.
+2. **[Plan 07 — Scanner](steps/07-scanner.md)** — `scanTicket({ code,
+   eventId, adminId })` does one atomic `UPDATE "Ticket" ... WHERE code = $1
+   AND eventId = $2 AND status = 'VALID' RETURNING ...`; zero rows means
+   "someone else got there first" and the state is classified by a second
+   read-only `SELECT`. Five states covered: VALID / ALREADY_USED (shows
+   when and by whom) / REVOKED (refund) / WRONG_EVENT (shows the correct
+   concert) / NOT_FOUND (same copy for unknown and malformed, to avoid an
+   existence oracle). `/admin/scan` is a Client Component using
+   `@zxing/browser` for the camera; manual-entry input is always visible.
+   Rate-limited per admin and per IP. Every scan — success or not — writes
+   an `AuditLog` row. **No migration.** Seven tasks.
+
+**Deliberately deferred to Plan 08:** ticket email (Resend + DNS), invitations,
+promo codes, staff-initiated refunds. "Money out" moves from the former
+executable Plan 06 slot to Plan 08. Design-doc numbering is unchanged.
+
+**Numbering swap recorded in [`README.md`](README.md)**: executable Plan 06
+is now "Tickets"; "Money out" is Plan 08; "Launch" is Plan 09.
+
+**Owner decisions on open questions, 26 Oct 2026** (recorded in each plan's
+Findings log):
+
+- **Per-ticket PDFs, not one-per-order.** A buyer with three tickets gets
+  three independently downloadable PDFs; the ticket code is a bearer
+  credential (the public `/t/<code>` page already renders the QR to
+  anyone with the code), so the PDF URL is `/t/<code>/pdf` with no extra
+  token guard. Order confirmation lists every ticket with its own PDF +
+  web links. The all-in-one order PDF was dropped. Plan 06 Tasks 5, 7, 8
+  rewritten accordingly.
+- **Email seam stays no-op in Plan 06.** Confirmed as proposed. Buyer
+  delivery goes through the download button until Plan 08 wires Resend.
+- **Audit failed scans — yes.** Every scan writes an `AuditLog` row
+  (confirmed as proposed).
+- **SCANNER sees the admissions list.** `/admin/events/[id]/scans` uses
+  `requireStaff()`, not `requireAdmin()`. Fields exposed to door staff:
+  `holderName`, ticket type, `usedAt`, scanning admin's name, last 6
+  chars of the code. Hidden: buyer e-mail, phone, order total,
+  reference, invoice data. The attempts tab (NOT_FOUND / MALFORMED /
+  WRONG_EVENT / REVOKED, from `AuditLog`) stays `requireAdmin()`.
+  Scanner-side nav link added from `/admin/scan` to the admissions list
+  for the picked event. Plan 07 Task 6 rewritten with the two-query
+  split and an eight-case regression suite that pins the field
+  allow-list.
+
+---
+
+## History — up to 17 September 2026
 
 Where the project stands, for whoever picks it up next. Update this at the end
 of a working session; it is the fastest way back into context.
@@ -79,9 +142,9 @@ execution outright and three tests that passed for the wrong reason.
   live availability, so `/[locale]` is now server-rendered on demand — `ƒ`, not
   `●`. Intended; build-time-frozen availability would be worse than useless.)*
 
-## Next
+## Next (historical — superseded by Tickets + Scanner above)
 
-**The milestone is a test-mode demo, decided 2 September 2026.** A working
+**The milestone was a test-mode demo, decided 2 September 2026.** A working
 product that takes dummy payments and creates real orders for both Polish and
 German buyers, in Stripe **test mode**, on `tickets-km.vercel.app`. The domain
 and the link from the existing Wix site are connected only **after** that demo
