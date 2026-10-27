@@ -33,6 +33,8 @@ export type OrderConfirmation = {
   }
   event: { title: string; slug: string; startsAt: Date; venue: string; city: string }
   band: OrderBand
+  /** Non-empty only when band === 'paid'. Each ticket has its own PDF + web link. */
+  tickets: Array<{ code: string; holderName: string | null }>
 }
 
 /**
@@ -154,6 +156,17 @@ export async function getOrderForConfirmation(
     }
   }
 
+  // Fetch tickets only for paid orders — avoids an extra round-trip on every
+  // other band (holding, processing, expired, cancelled, refunded).
+  let tickets: Array<{ code: string; holderName: string | null }> = []
+  if (band === 'paid') {
+    tickets = await db.ticket.findMany({
+      where: { orderId: order.id },
+      select: { code: true, holderName: true },
+      orderBy: { createdAt: 'asc' },
+    })
+  }
+
   // attendeeNames is deliberately never selected: it is PII the confirmation
   // flow has no need to display, token or not.
   return {
@@ -176,5 +189,6 @@ export async function getOrderForConfirmation(
       city: event.venue.city,
     },
     band,
+    tickets,
   }
 }

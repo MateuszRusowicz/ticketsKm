@@ -3,6 +3,8 @@ import { db } from '@/lib/server/db'
 import { getOrderForConfirmation } from '@/lib/server/order-lookup'
 import { createOrder } from '@/lib/server/orders'
 
+const CROCKFORD_RE = /^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{26}$/
+
 let ticketTypeId: string
 
 async function makeConcert() {
@@ -122,5 +124,61 @@ describe('getOrderForConfirmation', () => {
     const found = await getOrderForConfirmation(created.reference, created.accessToken, 'pl')
 
     expect(JSON.stringify(found)).not.toContain('attendeeNames')
+  })
+
+  it('paid band returns tickets ordered by createdAt ASC with Crockford codes', async () => {
+    const created = await anOrder()
+    const { orderId } = created
+
+    // Get the ticketTypeId and eventId from the order items
+    const item = await db.orderItem.findFirst({
+      where: { orderId },
+      select: { ticketTypeId: true, ticketType: { select: { eventId: true } } },
+    })
+    const ttId = item!.ticketTypeId
+    const eventId = item!.ticketType.eventId
+
+    // Mark the order PAID
+    await db.order.update({ where: { id: orderId }, data: { status: 'PAID' } })
+
+    // Create 2 tickets (matching the order quantity of 2)
+    const code1 = 'AAAA1111BBBB2222CCCC3333AA'
+    const code2 = 'BBBB2222CCCC3333DDDD4444BB'
+    await db.ticket.create({
+      data: { code: code1, orderId, eventId, ticketTypeId: ttId, holderName: 'Attendee 1' },
+    })
+    await db.ticket.create({
+      data: { code: code2, orderId, eventId, ticketTypeId: ttId, holderName: 'Attendee 2' },
+    })
+
+    const found = await getOrderForConfirmation(created.reference, created.accessToken, 'pl')
+
+    expect(found!.band).toBe('paid')
+    expect(found!.tickets).toHaveLength(2)
+    expect(found!.tickets[0].code).toBe(code1)
+    expect(found!.tickets[1].code).toBe(code2)
+    // Each code must match the Crockford alphabet
+    for (const t of found!.tickets) {
+      expect(CROCKFORD_RE.test(t.code)).toBe(true)
+    }
+  })
+
+  it('holding band returns empty tickets array', async () => {
+    const created = await anOrder()
+
+    const found = await getOrderForConfirmation(created.reference, created.accessToken, 'pl')
+
+    expect(found!.band).toBe('holding')
+    expect(found!.tickets).toHaveLength(0)
+  })
+
+  it('refunded band returns empty tickets array', async () => {
+    const created = await anOrder()
+    await db.order.update({ where: { id: created.orderId }, data: { status: 'REFUNDED' } })
+
+    const found = await getOrderForConfirmation(created.reference, created.accessToken, 'pl')
+
+    expect(found!.band).toBe('refunded')
+    expect(found!.tickets).toHaveLength(0)
   })
 })

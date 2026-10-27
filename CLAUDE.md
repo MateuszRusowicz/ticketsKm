@@ -154,6 +154,16 @@ writing against a remembered API.
 - **Two numbering schemes in `plan/`.** Design docs (00–10) and executable plans
   (`steps/`) number differently: design `05` is Admin & scanner, executable `05`
   is Payments. `plan/README.md`'s table is authoritative for executable plans.
+- **`pdf-lib` font subsetting must be explicit.** `doc.embedFont(bytes)` with no
+  options embeds the entire font (~950KB per weight). Pass `{ subset: true }` to
+  embed only the glyphs actually drawn. Without it, a single ticket PDF is 500KB+
+  instead of ~50KB. This is the only way to stay under Vercel's function-size
+  budget and the plan's 200KB target.
+- **New path trees outside `(shop)` / `(admin)` need their own root layout.**
+  Next.js App Router requires a `layout.tsx` at each layout boundary. A path
+  like `/t` that sits outside both route groups needs `src/app/t/layout.tsx`
+  — without it the build fails with "No root layout found". Minimum content:
+  `<html lang="..."><body>{children}</body></html>` with the app's global CSS.
 
 ---
 

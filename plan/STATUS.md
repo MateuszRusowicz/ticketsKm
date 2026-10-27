@@ -1,31 +1,22 @@
-# Status — 26 October 2026
+# Status — 27 October 2026
 
 ## Next
 
-**Tickets + scanner.** Executable plans written 26 Oct 2026 after the owner
-asked for "PDF ticket with QR code, scannable at the door, DB updates on
-first scan, every possible error handled". The ask maps to two plans
-sequentially:
+**Scanner.** Plan 06 (Tickets) is complete as of 27 Oct 2026 on branch
+`feat/plan-06-tickets` (489 tests + 2 todo, exit 0 twice from a clean tree).
+The next executable plan is:
 
-1. **[Plan 06 — Tickets](steps/06-tickets.md)** — `fulfilOrder` already
-   creates `Ticket` rows with 128-bit Crockford codes. This plan adds the
-   QR generator, PDF generator (pdf-lib + fontkit + Noto Sans latin-ext),
-   the public `/t/<code>` page (read-only; opening it never marks the
-   ticket used — product invariant), the `/order/<ref>/tickets.pdf?t=…`
-   download endpoint, the download button on the order confirmation page,
-   and a no-op `emailFulfilledOrder(orderId)` seam for the Resend wiring
-   that stays blocked until DNS lands. **No migration.** Ten tasks.
-2. **[Plan 07 — Scanner](steps/07-scanner.md)** — `scanTicket({ code,
-   eventId, adminId })` does one atomic `UPDATE "Ticket" ... WHERE code = $1
-   AND eventId = $2 AND status = 'VALID' RETURNING ...`; zero rows means
-   "someone else got there first" and the state is classified by a second
-   read-only `SELECT`. Five states covered: VALID / ALREADY_USED (shows
-   when and by whom) / REVOKED (refund) / WRONG_EVENT (shows the correct
-   concert) / NOT_FOUND (same copy for unknown and malformed, to avoid an
-   existence oracle). `/admin/scan` is a Client Component using
-   `@zxing/browser` for the camera; manual-entry input is always visible.
-   Rate-limited per admin and per IP. Every scan — success or not — writes
-   an `AuditLog` row. **No migration.** Seven tasks.
+**[Plan 07 — Scanner](steps/07-scanner.md)** — `scanTicket({ code,
+eventId, adminId })` does one atomic `UPDATE "Ticket" ... WHERE code = $1
+AND eventId = $2 AND status = 'VALID' RETURNING ...`; zero rows means
+"someone else got there first" and the state is classified by a second
+read-only `SELECT`. Five states covered: VALID / ALREADY_USED (shows
+when and by whom) / REVOKED (refund) / WRONG_EVENT (shows the correct
+concert) / NOT_FOUND (same copy for unknown and malformed, to avoid an
+existence oracle). `/admin/scan` is a Client Component using
+`@zxing/browser` for the camera; manual-entry input is always visible.
+Rate-limited per admin and per IP. Every scan — success or not — writes
+an `AuditLog` row. **No migration.** Seven tasks.
 
 **Deliberately deferred to Plan 08:** ticket email (Resend + DNS), invitations,
 promo codes, staff-initiated refunds. "Money out" moves from the former
@@ -34,7 +25,66 @@ executable Plan 06 slot to Plan 08. Design-doc numbering is unchanged.
 **Numbering swap recorded in [`README.md`](README.md)**: executable Plan 06
 is now "Tickets"; "Money out" is Plan 08; "Launch" is Plan 09.
 
-**Owner decisions on open questions, 26 Oct 2026** (recorded in each plan's
+---
+
+## Plan 06 — Tickets: complete (27 Oct 2026)
+
+Gate from a clean tree: **489 tests + 2 todo across 55 files**, exit 0 twice.
+
+What shipped on `feat/plan-06-tickets`:
+
+- `src/lib/shared/qr.ts` — `qrPngBuffer` (PNG Buffer for pdf-lib) and
+  `qrSvgString` (inline SVG for the web page), both with `errorCorrectionLevel:
+  'H'`, `margin: 4`, deterministic output.
+- `src/lib/shared/ticket-layout.ts` — `fitHolderName(raw, maxChars)`:
+  trim + normalise + ellipsis truncation for buyer-supplied names.
+- `src/lib/server/ticket-pdf.ts` — `renderTicketPdf(input)`: pure function,
+  no DB, A4 portrait, Noto Sans latin-ext embedded with `subset: true` (final
+  PDF ~50KB, well under the 200KB target). Fonts loaded once at module scope.
+- `src/lib/server/ticket-lookup.ts` — `getPublicTicket(code)`: validates with
+  Crockford regex before any DB access; returns `valid / used / revoked / null`.
+- `src/lib/server/email.ts` — `emailFulfilledOrder(orderId)`: no-op seam
+  returning `{ sent: false, reason: 'disabled' }` until Plan 08 wires Resend.
+- `src/app/t/layout.tsx` — root layout for the `/t/*` subtree.
+- `src/app/t/[code]/page.tsx` — server component with `dynamic = 'force-dynamic'`,
+  inline i18n (order locale, not URL locale), rate limit 60/min.
+- `src/app/t/[code]/not-found.tsx` — trilingual not-found page.
+- `src/app/t/[code]/pdf/route.ts` — Route Handler returning per-ticket PDF;
+  rate limit 20/min; revoked → 404; `Content-Disposition: attachment;
+  filename="ticket-<code6>.pdf"`.
+- `src/assets/fonts/NotoSans-Regular.ttf` + `NotoSans-Bold.ttf` (~431KB each).
+- Order confirmation page updated: `paid` band now lists every ticket with
+  its own "Pobierz PDF" and "Bilet w przeglądarce" links (no all-in-one PDF).
+- `src/lib/server/orders.ts`: `ticketCode` exported, collision-probability
+  comment added.
+- `src/lib/server/order-lookup.ts`: `OrderConfirmation.tickets[]` added;
+  populated only on the `paid` band.
+- `src/lib/server/webhook-dispatch.ts`: `emailFulfilledOrder` called after
+  `fulfilOrder` returns, outside the transaction.
+- Message files: new `ticket` root + `order.paid` keys in pl/en/de.
+- 44 new tests across 7 new test files.
+
+Findings from execution (all in plan step Findings log):
+
+- **`subset: true` is essential.** Without it, Noto Sans embeds the full
+  font (~950KB per weight), blowing the 200KB size limit. With it, the PDF
+  is ~50KB.
+- **The `/t/*` subtree needs its own root layout.** Next.js App Router requires
+  a layout when a path tree is outside all existing route-group layouts.
+- **Inline i18n, not next-intl**, on the `/t/<code>` page — the page is outside
+  the locale group and has no locale URL segment; it renders in the order's
+  language.
+- **`QRCodeRenderersOptions`** (not `QRCodeOptions`) is the correct TypeScript
+  type for margin and color options in the `qrcode` package.
+- **`new Uint8Array(pdfBuffer)`** needed in the Route Handler body — `Buffer`
+  is not directly assignable to `BodyInit` in Next.js 16.
+- **`'fulfilled' in result && result.fulfilled`** — TypeScript cannot narrow a
+  discriminated union with a non-shared property through the plain `.fulfilled`
+  dot notation across all union arms.
+
+---
+
+## Owner decisions on open questions, 26 Oct 2026 (recorded in each plan's
 Findings log):
 
 - **Per-ticket PDFs, not one-per-order.** A buyer with three tickets gets

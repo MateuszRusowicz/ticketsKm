@@ -36,6 +36,10 @@ no automated coverage at all.
 
 ## Testing by hand
 
+[`06-manual-test.md`](06-manual-test.md) is the ticket delivery checklist —
+PDF downloads, QR scan round-trip, the forwarding story, revoked-ticket
+behaviour, rate limiting.
+
 [`05-manual-test.md`](05-manual-test.md) is the payments checklist — every
 scenario plus the Stripe test data (cards, BLIK, P24, Klarna, PayPal, SEPA).
 
@@ -57,7 +61,7 @@ expected result, so progress is verified rather than assumed.
 | [03 — Public programme](steps/03-public-programme.md) ✅ | Phase 2 | A visitor browses in 3 languages and reaches a validated form |
 | [04 — Inventory](steps/04-inventory.md) ✅ | Phase 3 | Concurrency tests prove the system cannot oversell |
 | [05 — Payments](steps/05-payments.md) ✅ | Phases 4–5 | A real test payment produces a confirmed order on the deployed site |
-| [06 — Tickets](steps/06-tickets.md) | Fulfilment deliverables | A paid order yields a downloadable PDF with QR codes and a public `/t/<code>` page per ticket |
+| [06 — Tickets](steps/06-tickets.md) ✅ | Fulfilment deliverables | A paid order yields a downloadable PDF with QR codes and a public `/t/<code>` page per ticket |
 | [07 — Scanner](steps/07-scanner.md) | Phase 7 | Two phones scan one ticket; exactly one shows green |
 | 08 — Money out | Phase 6 | Invitations, promo codes, refunds and ticket email through Resend work without the Stripe dashboard |
 | 09 — Launch | Phase 8 | A live transaction succeeds and is refunded. Also the only slot for CSP, shared rate limiting and the RODO retention job |

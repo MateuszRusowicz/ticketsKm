@@ -112,6 +112,16 @@
     "heading": "Nie znaleziono strony",
     "body": "Ten koncert nie istnieje lub nie jest już dostępny."
   },
+  "ticket": {
+    "valid": { "heading": "Bilet ważny", "body": "Pokaż ten kod przy wejściu." },
+    "used": { "heading": "Bilet wykorzystany", "body": "Wejście zarejestrowano {time}." },
+    "revoked": { "heading": "Bilet nieważny", "body": "Ten bilet został anulowany lub zwrócony." },
+    "notFound": { "heading": "Nie znaleziono biletu", "body": "Sprawdź adres z biletu lub skontaktuj się z organizatorem." },
+    "codeLabel": "Kod biletu",
+    "concert": "Koncert",
+    "venue": "Miejsce",
+    "holder": "Imię i nazwisko"
+  },
   "order": {
     "reference": "Numer zamówienia",
     "buyer": "Zamawiający",
@@ -154,7 +164,11 @@
     },
     "paid": {
       "heading": "Zamówienie opłacone",
-      "body": "Bilety zostaną wysłane na Twój adres e-mail."
+      "body": "Bilety zostaną wysłane na Twój adres e-mail.",
+      "downloadPdf": "Pobierz PDF",
+      "webTicket": "Bilet w przeglądarce",
+      "ticketLabel": "Bilet {number}",
+      "perTicketNote": "Każdy bilet ma własny kod. Możesz przesłać osobny bilet osobnej osobie."
     },
     "refunded": {
       "heading": "Zamówienie zwrócone",
