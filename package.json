@@ -22,7 +22,7 @@
     "holds:verify": "dotenv -e .env -- tsx scripts/verify-holds.ts"
   },
   "dependencies": {
-    "@hookform/resolvers": "^5.9.1",
+    "@hookform/resolvers": "^6.0.2",
     "@node-rs/argon2": "^2.1.0",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
